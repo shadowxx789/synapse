@@ -22,6 +22,7 @@ workflows:
         EXPO_SDK_VERSION: "54.0.31"
         NODE_VERSION: "20"
       node: 20
+      java: 17
     triggering:
       events:
         - push
@@ -37,7 +38,6 @@ workflows:
     scripts:
       - name: Install dependencies
         script: |
-          cd synapse-app
           npm ci
       - name: Install Expo CLI
         script: |
@@ -51,15 +51,24 @@ workflows:
           if [ -z "$EXPO_PUBLIC_OPENAI_API_KEY" ]; then
             echo "Warning: OpenAI API key not set"
           fi
+      - name: Prebuild Android native code
+        script: |
+          npx expo prebuild --platform android --clean
       - name: Build Android APK
         script: |
-          cd synapse-app
-          npx expo export:embed --platform android
-          npx expo prebuild --platform android --clean
           cd android
-          ./gradlew assembleRelease
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+      - name: List build outputs
+        script: |
+          echo "=== Build outputs ==="
+          find android/app/build/outputs -type f -name "*.apk" -o -name "*.aab" | while read file; do
+            echo "Found: $file"
+            ls -lh "$file"
+          done
     artifacts:
-      - synapse-app/android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/*.aab
     publishing:
       email:
         recipients:
@@ -106,7 +115,6 @@ workflows:
     scripts:
       - name: Install dependencies
         script: |
-          cd synapse-app
           npm ci
       - name: Install Expo CLI
         script: |
@@ -117,22 +125,23 @@ workflows:
           if [ -z "$EXPO_PUBLIC_FIREBASE_API_KEY" ]; then
             echo "Warning: Firebase API key not set"
           fi
+      - name: Prebuild iOS native code
+        script: |
+          npx expo prebuild --platform ios --clean
       - name: Install CocoaPods dependencies
         script: |
-          cd synapse-app
-          npx expo prebuild --platform ios --clean
           cd ios
           pod install
       - name: Build iOS
         script: |
-          cd synapse-app/ios
+          cd ios
           xcodebuild -workspace $XCODE_WORKSPACE \
             -scheme $XCODE_SCHEME \
             -configuration Release \
             -archivePath $HOME/Library/Developer/Xcode/Archives/synapseapp.xcarchive \
             archive
     artifacts:
-      - synapse-app/ios/build/**/*.ipa
+      - ios/build/**/*.ipa
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
     publishing:
@@ -167,18 +176,15 @@ workflows:
     scripts:
       - name: Install dependencies
         script: |
-          cd synapse-app
           npm ci
       - name: Build web app
         script: |
-          cd synapse-app
           npx expo export:web
       - name: Verify build output
         script: |
-          cd synapse-app
           ls -la dist/
     artifacts:
-      - synapse-app/dist/**/*
+      - dist/**/*
     publishing:
       email:
         recipients:
@@ -206,15 +212,12 @@ workflows:
     scripts:
       - name: Install dependencies
         script: |
-          cd synapse-app
           npm ci
       - name: TypeScript check
         script: |
-          cd synapse-app
           npx tsc --noEmit
       - name: Check for type errors
         script: |
-          cd synapse-app
           echo "TypeScript strict mode check passed ✓"
     publishing:
       email:
@@ -249,19 +252,16 @@ workflows:
     scripts:
       - name: Install dependencies
         script: |
-          cd synapse-app
           npm ci
       - name: Install EAS CLI
         script: |
           npm install -g eas-cli
       - name: Configure EAS
         script: |
-          cd synapse-app
           # Login to Expo (requires EXPO_TOKEN environment variable)
           eas login --non-interactive
       - name: Build all platforms with EAS
         script: |
-          cd synapse-app
           eas build --platform all --non-interactive --no-wait
     publishing:
       email:
