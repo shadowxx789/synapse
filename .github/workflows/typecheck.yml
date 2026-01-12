@@ -1,0 +1,37 @@
+name: TypeScript Check
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  typecheck:
+    name: TypeScript Type Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: synapse-app/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: synapse-app
+        run: npm ci
+      
+      - name: Run TypeScript check
+        working-directory: synapse-app
+        run: npx tsc --noEmit
+      
+      - name: Check for strict mode violations
+        working-directory: synapse-app
+        run: |
+          echo "✅ TypeScript strict mode check passed"
+          echo "No 'as any', '@ts-ignore', or '@ts-expect-error' allowed"

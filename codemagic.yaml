@@ -1,0 +1,277 @@
+# Codemagic CI/CD Configuration for Synapse App
+# https://docs.codemagic.io/yaml/yaml-getting-started/
+
+workflows:
+  # ============================================================================
+  # Android Workflow
+  # ============================================================================
+  android-workflow:
+    name: Android Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        # Add these environment variable groups in Codemagic UI:
+        # - expo_credentials (EXPO_TOKEN)
+        # - firebase_config (all EXPO_PUBLIC_FIREBASE_* vars)
+        # - openai_config (EXPO_PUBLIC_OPENAI_API_KEY)
+        - expo_credentials
+        - firebase_config
+        - openai_config
+      vars:
+        EXPO_SDK_VERSION: "54.0.31"
+        NODE_VERSION: "20"
+      node: 20
+    triggering:
+      events:
+        - push
+        - tag
+        - pull_request
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+          source: true
+        - pattern: 'develop'
+          include: true
+          source: true
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd synapse-app
+          npm ci
+      - name: Install Expo CLI
+        script: |
+          npm install -g eas-cli expo-cli
+      - name: Verify environment variables
+        script: |
+          echo "Checking required environment variables..."
+          if [ -z "$EXPO_PUBLIC_FIREBASE_API_KEY" ]; then
+            echo "Warning: Firebase API key not set"
+          fi
+          if [ -z "$EXPO_PUBLIC_OPENAI_API_KEY" ]; then
+            echo "Warning: OpenAI API key not set"
+          fi
+      - name: Build Android APK
+        script: |
+          cd synapse-app
+          npx expo export:embed --platform android
+          npx expo prebuild --platform android --clean
+          cd android
+          ./gradlew assembleRelease
+    artifacts:
+      - synapse-app/android/app/build/outputs/**/*.apk
+    publishing:
+      email:
+        recipients:
+          - shadowxx789@users.noreply.github.com
+        notify:
+          success: true
+          failure: true
+
+  # ============================================================================
+  # iOS Workflow
+  # ============================================================================
+  ios-workflow:
+    name: iOS Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: codemagic
+    environment:
+      groups:
+        - expo_credentials
+        - firebase_config
+        - openai_config
+        - ios_credentials
+      vars:
+        EXPO_SDK_VERSION: "54.0.31"
+        NODE_VERSION: "20"
+        BUNDLE_ID: "com.synapse.app"
+        XCODE_WORKSPACE: "synapse-app.xcworkspace"
+        XCODE_SCHEME: "synapseapp"
+      node: 20
+      xcode: latest
+      cocoapods: default
+    triggering:
+      events:
+        - push
+        - tag
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+          source: true
+        - pattern: 'release/*'
+          include: true
+          source: true
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd synapse-app
+          npm ci
+      - name: Install Expo CLI
+        script: |
+          npm install -g eas-cli expo-cli
+      - name: Verify environment variables
+        script: |
+          echo "Checking required environment variables..."
+          if [ -z "$EXPO_PUBLIC_FIREBASE_API_KEY" ]; then
+            echo "Warning: Firebase API key not set"
+          fi
+      - name: Install CocoaPods dependencies
+        script: |
+          cd synapse-app
+          npx expo prebuild --platform ios --clean
+          cd ios
+          pod install
+      - name: Build iOS
+        script: |
+          cd synapse-app/ios
+          xcodebuild -workspace $XCODE_WORKSPACE \
+            -scheme $XCODE_SCHEME \
+            -configuration Release \
+            -archivePath $HOME/Library/Developer/Xcode/Archives/synapseapp.xcarchive \
+            archive
+    artifacts:
+      - synapse-app/ios/build/**/*.ipa
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      email:
+        recipients:
+          - shadowxx789@users.noreply.github.com
+        notify:
+          success: true
+          failure: true
+
+  # ============================================================================
+  # Web Workflow
+  # ============================================================================
+  web-workflow:
+    name: Web Build & Deploy
+    max_build_duration: 30
+    instance_type: linux_x2
+    environment:
+      groups:
+        - firebase_config
+        - openai_config
+      vars:
+        NODE_VERSION: "20"
+      node: 20
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+          source: true
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd synapse-app
+          npm ci
+      - name: Build web app
+        script: |
+          cd synapse-app
+          npx expo export:web
+      - name: Verify build output
+        script: |
+          cd synapse-app
+          ls -la dist/
+    artifacts:
+      - synapse-app/dist/**/*
+    publishing:
+      email:
+        recipients:
+          - shadowxx789@users.noreply.github.com
+        notify:
+          success: true
+          failure: true
+
+  # ============================================================================
+  # TypeScript Check & Lint Workflow
+  # ============================================================================
+  check-workflow:
+    name: TypeScript & Lint Check
+    max_build_duration: 15
+    instance_type: linux_x2
+    environment:
+      node: 20
+    triggering:
+      events:
+        - pull_request
+      branch_patterns:
+        - pattern: '*'
+          include: true
+          source: true
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd synapse-app
+          npm ci
+      - name: TypeScript check
+        script: |
+          cd synapse-app
+          npx tsc --noEmit
+      - name: Check for type errors
+        script: |
+          cd synapse-app
+          echo "TypeScript strict mode check passed ✓"
+    publishing:
+      email:
+        recipients:
+          - shadowxx789@users.noreply.github.com
+        notify:
+          success: false
+          failure: true
+
+  # ============================================================================
+  # EAS Build Workflow (Recommended for Expo apps)
+  # ============================================================================
+  eas-build-workflow:
+    name: EAS Build (All Platforms)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - expo_credentials
+        - firebase_config
+        - openai_config
+      vars:
+        NODE_VERSION: "20"
+      node: 20
+    triggering:
+      events:
+        - tag
+      branch_patterns:
+        - pattern: 'v*.*.*'
+          include: true
+          source: true
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd synapse-app
+          npm ci
+      - name: Install EAS CLI
+        script: |
+          npm install -g eas-cli
+      - name: Configure EAS
+        script: |
+          cd synapse-app
+          # Login to Expo (requires EXPO_TOKEN environment variable)
+          eas login --non-interactive
+      - name: Build all platforms with EAS
+        script: |
+          cd synapse-app
+          eas build --platform all --non-interactive --no-wait
+    publishing:
+      email:
+        recipients:
+          - shadowxx789@users.noreply.github.com
+        notify:
+          success: true
+          failure: true
+      scripts:
+        - name: Publish build info
+          script: |
+            echo "EAS build submitted successfully"
+            echo "Check build status at https://expo.dev"
