@@ -492,10 +492,7 @@ const styles = StyleSheet.create({
         borderRadius: BorderRadius.full,
         borderWidth: 2,
         borderColor: Colors.energyGlow,
-        shadowColor: Colors.energyGlow,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        boxShadow: '0px 0px 8px rgba(255, 215, 0, 0.3)',
         elevation: 4,
     },
     energyIcon: {

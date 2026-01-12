@@ -2,6 +2,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter } from 'expo-router';
+import { View, Text } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
@@ -61,10 +62,18 @@ export default function RootLayout() {
   }, [loaded, isAuthenticated, user?.role]);
 
   if (!loaded) {
-    return null;
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
+        <Text style={{ color: Colors.textPrimary }}>Loading Synapse...</Text>
+      </View>
+    );
   }
 
-  return <RootLayoutNav />;
+  return (
+    <View style={{ flex: 1, height: '100%' }}>
+      <RootLayoutNav />
+    </View>
+  );
 }
 
 function RootLayoutNav() {

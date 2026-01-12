@@ -1,7 +1,7 @@
 // AI Service for Task Shredding
 // Breaks down large tasks into <2 minute atomic steps
 
-const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
+import { useAISettingsStore } from '@/stores/aiSettingsStore';
 
 export interface ShredResult {
     originalTask: string;
@@ -13,34 +13,39 @@ export interface ShredResult {
 }
 
 export async function shredTask(taskDescription: string): Promise<ShredResult> {
+    const { getEffectiveConfig, taskShredPrompt } = useAISettingsStore.getState();
+    const config = getEffectiveConfig();
+
+    // Check if API is configured
+    if (!config.apiKey) {
+        console.warn('AI API not configured, returning original task');
+        return {
+            originalTask: taskDescription,
+            subtasks: [{
+                title: taskDescription,
+                estimatedMinutes: 5,
+                order: 1,
+            }],
+        };
+    }
+
     try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const response = await fetch(`${config.baseUrl}/chat/completions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                'Authorization': `Bearer ${config.apiKey}`,
             },
             body: JSON.stringify({
-                model: 'gpt-4o-mini',
+                model: config.model,
                 messages: [
                     {
                         role: 'system',
-                        content: `You are a task breakdown assistant designed for people with ADHD. 
-Your job is to break down tasks into very small, atomic steps that take less than 2 minutes each.
-
-Rules:
-1. Each step must be concrete and actionable
-2. Each step should take 1-2 minutes maximum
-3. Use simple, clear language
-4. Start each step with an action verb
-5. Remove any ambiguity
-
-Return a JSON array of steps in this format:
-[{"title": "Step description", "estimatedMinutes": 1}]`
+                        content: taskShredPrompt,
                     },
                     {
                         role: 'user',
-                        content: `Break down this task into atomic steps: "${taskDescription}"`
+                        content: `Break down this task into atomic steps: "${taskDescription}"`,
                     }
                 ],
                 temperature: 0.7,
@@ -48,14 +53,26 @@ Return a JSON array of steps in this format:
             }),
         });
 
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('AI API error:', response.status, errorText);
+            throw new Error(`API error: ${response.status}`);
+        }
+
         const data = await response.json();
-        const parsed = JSON.parse(data.choices[0].message.content);
+        const content = data.choices?.[0]?.message?.content;
+        
+        if (!content) {
+            throw new Error('No content in response');
+        }
+
+        const parsed = JSON.parse(content);
 
         return {
             originalTask: taskDescription,
-            subtasks: (parsed.steps || parsed.subtasks || []).map((step: any, index: number) => ({
-                title: step.title || step.step || step.description,
-                estimatedMinutes: step.estimatedMinutes || step.minutes || 2,
+            subtasks: (parsed.steps || parsed.subtasks || parsed || []).map((step: any, index: number) => ({
+                title: step.title || step.step || step.description || step,
+                estimatedMinutes: step.estimatedMinutes || step.minutes || step.time || 2,
                 order: index + 1,
             })),
         };
@@ -96,4 +113,97 @@ export async function detectConflict(message: string): Promise<{
         isConflict: true,
         suggestion: '试试用"我感觉..."开头来表达你的需求，而不是指责对方。',
     };
+}
+
+// Reminder style types
+export type ReminderStyle = 'gentle' | 'time' | 'encourage' | 'inquiry' | 'custom';
+
+export interface GenerateReminderResult {
+    success: boolean;
+    message: string;
+    error?: string;
+}
+
+// Generate AI-powered reminder message
+export async function generateReminder(
+    style: ReminderStyle,
+    context?: string
+): Promise<GenerateReminderResult> {
+    const { getEffectiveConfig, reminderPrompt } = useAISettingsStore.getState();
+    const config = getEffectiveConfig();
+
+    // Check if API is configured
+    if (!config.apiKey) {
+        return {
+            success: false,
+            message: '',
+            error: '请先配置 AI API',
+        };
+    }
+
+    const styleDescriptions: Record<ReminderStyle, string> = {
+        gentle: '温和型：轻松友好，像朋友一样询问',
+        time: '时间型：温和地提醒时间，但不要有压力感',
+        encourage: '鼓励型：给予支持和信心，相信对方能做到',
+        inquiry: '询问型：关心对方状态，询问是否需要帮助',
+        custom: context || '根据具体情况生成合适的提醒',
+    };
+
+    try {
+        const response = await fetch(`${config.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${config.apiKey}`,
+            },
+            body: JSON.stringify({
+                model: config.model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: reminderPrompt,
+                    },
+                    {
+                        role: 'user',
+                        content: `请生成一条${styleDescriptions[style]}风格的提醒消息。${context ? `额外上下文：${context}` : ''}`,
+                    }
+                ],
+                temperature: 0.8,
+                max_tokens: 100,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('AI API error:', response.status, errorText);
+            return {
+                success: false,
+                message: '',
+                error: `API 请求失败: ${response.status}`,
+            };
+        }
+
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content?.trim();
+
+        if (!content) {
+            return {
+                success: false,
+                message: '',
+                error: '未能生成消息',
+            };
+        }
+
+        return {
+            success: true,
+            message: content,
+        };
+    } catch (error) {
+        console.error('Generate reminder failed:', error);
+        return {
+            success: false,
+            message: '',
+            error: error instanceof Error ? error.message : '生成失败',
+        };
+    }
 }

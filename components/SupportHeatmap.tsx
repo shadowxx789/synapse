@@ -231,17 +231,11 @@ const styles = StyleSheet.create({
     cellHighActivity: {
         borderWidth: 2,
         borderColor: Colors.supporter.accent,
-        shadowColor: Colors.supporter.primary,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        boxShadow: '0px 0px 8px rgba(78, 205, 196, 0.3)',
         elevation: 4,
     },
     cellStreak: {
-        shadowColor: '#FFD700',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.4,
-        shadowRadius: 6,
+        boxShadow: '0px 0px 6px rgba(255, 215, 0, 0.4)',
         elevation: 3,
     },
     emptyCell: {

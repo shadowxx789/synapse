@@ -43,6 +43,14 @@ export default function ExecutorLayout() {
                     ),
                 }}
             />
+            <Tabs.Screen
+                name="settings"
+                options={{
+                    tabBarIcon: ({ focused }) => (
+                        <TabIcon icon="⚙️" label="设置" focused={focused} />
+                    ),
+                }}
+            />
         </Tabs>
     );
 }

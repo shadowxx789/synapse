@@ -214,10 +214,7 @@ const styles = StyleSheet.create({
         borderWidth: 5,
         overflow: 'hidden',
         backgroundColor: Colors.surface,
-        shadowColor: '#FF6B35',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.3,
-        shadowRadius: 20,
+        boxShadow: '0px 0px 20px rgba(255, 107, 53, 0.3)',
         elevation: 8,
     },
     sandFill: {
@@ -244,9 +241,6 @@ const styles = StyleSheet.create({
         fontSize: 48,
         fontWeight: '800',
         letterSpacing: 1,
-        textShadowColor: 'rgba(0,0,0,0.3)',
-        textShadowOffset: { width: 0, height: 2 },
-        textShadowRadius: 4,
     },
     labelText: {
         fontSize: FontSizes.sm,
