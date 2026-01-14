@@ -8,18 +8,22 @@ import {
     ScrollView,
     Alert,
     Platform,
+    ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 import { useUserStore } from '@/stores/userStore';
+import { userService } from '@/services/firebase';
 import AISettings from '@/components/AISettings';
+import PartnerStatus from '@/components/PartnerStatus';
 
 export default function ExecutorSettingsScreen() {
     const router = useRouter();
-    const { user, logout } = useUserStore();
+    const { user, logout, updateUser, setCoupleSecret } = useUserStore();
     const [showAISettings, setShowAISettings] = useState(false);
+    const [isUnpairing, setIsUnpairing] = useState(false);
 
     const handleSwitchRole = () => {
         const doSwitch = () => {
@@ -52,7 +56,7 @@ export default function ExecutorSettingsScreen() {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             }
             logout();
-            router.replace('/(auth)');
+            router.replace('/(auth)/login');
         };
 
         if (Platform.OS === 'web') {
@@ -66,6 +70,57 @@ export default function ExecutorSettingsScreen() {
                 [
                     { text: '取消', style: 'cancel' },
                     { text: '确定', style: 'destructive', onPress: doLogout },
+                ]
+            );
+        }
+    };
+
+    const handlePairPartner = () => {
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
+        router.push('/(auth)/pair');
+    };
+
+    const handleUnpairPartner = async () => {
+        const doUnpair = async () => {
+            if (!user?.id) return;
+
+            setIsUnpairing(true);
+            try {
+                await userService.unpair(user.id);
+                updateUser({
+                    partnerId: undefined,
+                    coupleId: undefined,
+                });
+                setCoupleSecret(null);
+
+                if (Platform.OS !== 'web') {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+            } catch (error) {
+                console.error('Failed to unpair:', error);
+                if (Platform.OS === 'web') {
+                    window.alert('解除配对失败，请重试');
+                } else {
+                    Alert.alert('错误', '解除配对失败，请重试');
+                }
+            } finally {
+                setIsUnpairing(false);
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm('确定要解除与伴侣的配对吗？解除后需要重新配对。')) {
+                doUnpair();
+            }
+        } else {
+            Alert.alert(
+                '解除配对',
+                '确定要解除与伴侣的配对吗？解除后需要重新配对。',
+                [
+                    { text: '取消', style: 'cancel' },
+                    { text: '确定解除', style: 'destructive', onPress: doUnpair },
                 ]
             );
         }
@@ -87,9 +142,57 @@ export default function ExecutorSettingsScreen() {
                         </View>
                         <View style={styles.userInfo}>
                             <Text style={styles.userName}>{user?.name || '执行者'}</Text>
+                            <Text style={styles.userEmail}>{user?.email}</Text>
                             <Text style={styles.userRole}>执行者模式</Text>
                         </View>
                     </View>
+                </View>
+
+                {/* Partner Section */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>伴侣连接</Text>
+                    {user?.partnerId ? (
+                        <>
+                            <PartnerStatus
+                                partnerName="支持者"
+                                partnerRole="supporter"
+                                isOnline={false}
+                                onPress={() => {}}
+                                onSendMessage={() => {}}
+                                onSendEnergy={() => {}}
+                            />
+                            <TouchableOpacity
+                                style={[styles.settingItem, styles.settingItemDanger, styles.marginTop]}
+                                onPress={handleUnpairPartner}
+                                disabled={isUnpairing}
+                            >
+                                {isUnpairing ? (
+                                    <ActivityIndicator size="small" color={Colors.error} style={styles.settingIcon} />
+                                ) : (
+                                    <Text style={styles.settingIcon}>💔</Text>
+                                )}
+                                <View style={styles.settingContent}>
+                                    <Text style={[styles.settingLabel, styles.settingLabelDanger]}>
+                                        解除配对
+                                    </Text>
+                                    <Text style={styles.settingHint}>解除与伴侣的连接</Text>
+                                </View>
+                                <Text style={styles.settingArrow}>→</Text>
+                            </TouchableOpacity>
+                        </>
+                    ) : (
+                        <TouchableOpacity
+                            style={styles.settingItem}
+                            onPress={handlePairPartner}
+                        >
+                            <Text style={styles.settingIcon}>🔗</Text>
+                            <View style={styles.settingContent}>
+                                <Text style={styles.settingLabel}>配对伴侣</Text>
+                                <Text style={styles.settingHint}>连接你的支持者</Text>
+                            </View>
+                            <Text style={styles.settingArrow}>→</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 {/* Settings Options */}
@@ -204,6 +307,11 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: Colors.textPrimary,
     },
+    userEmail: {
+        fontSize: FontSizes.sm,
+        color: Colors.textSecondary,
+        marginTop: 2,
+    },
     userRole: {
         fontSize: FontSizes.sm,
         color: Colors.executor.primary,
@@ -220,6 +328,9 @@ const styles = StyleSheet.create({
     settingItemDanger: {
         borderWidth: 1,
         borderColor: 'rgba(231, 76, 60, 0.3)',
+    },
+    marginTop: {
+        marginTop: Spacing.md,
     },
     settingIcon: {
         fontSize: 24,

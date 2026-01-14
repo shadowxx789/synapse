@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     View,
     Text,
@@ -9,23 +9,22 @@ import {
     Modal,
     KeyboardAvoidingView,
     Platform,
+    ActivityIndicator,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import Animated, {
-    FadeIn,
     FadeInUp,
     SlideInDown,
-    SlideInUp,
     useAnimatedStyle,
     useSharedValue,
-    withRepeat,
     withSequence,
     withTiming,
 } from 'react-native-reanimated';
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
-import { useChatStore, ConflictPattern, Message, EmotionType, CommunicationTip } from '@/stores/chatStore';
+import { useChatStore } from '@/stores/chatStore';
 import { useBadgeStore } from '@/stores/badgeStore';
+import { generateSafeCommunicationOptions, SafeCommunicationOption } from '@/services/ai';
 
 interface ChatBufferProps {
     currentUserId?: string;
@@ -39,58 +38,50 @@ export default function ChatBuffer({
     const {
         messages,
         addMessage,
-        checkForConflict,
-        getSuggestion,
-        getAlternativeSuggestions,
         peacefulDays,
-        communicationStats,
-        communicationTips,
-        currentMood,
-        getWeeklyInsight,
-        logEmotion,
-        markTipCompleted,
-        setCurrentMood,
     } = useChatStore();
 
     const { updateCommunicationScore } = useBadgeStore();
 
     const [inputText, setInputText] = useState('');
-    const [showInterceptModal, setShowInterceptModal] = useState(false);
-    const [interceptedPattern, setInterceptedPattern] = useState<ConflictPattern | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [showOptionsModal, setShowOptionsModal] = useState(false);
+    const [communicationOptions, setCommunicationOptions] = useState<SafeCommunicationOption[]>([]);
     const [originalMessage, setOriginalMessage] = useState('');
-    const [showTipsModal, setShowTipsModal] = useState(false);
-    const [showInsightModal, setShowInsightModal] = useState(false);
-    const [showMoodPicker, setShowMoodPicker] = useState(false);
-    const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+    const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
     const scrollViewRef = useRef<ScrollView>(null);
 
-    // Warning animation
+    // Animation for input shake
     const shakeX = useSharedValue(0);
 
-    const weeklyInsight = getWeeklyInsight();
-
-    const handleSend = () => {
+    const handleSend = async () => {
         if (!inputText.trim()) return;
 
-        const conflictCheck = checkForConflict(inputText);
+        const messageToProcess = inputText.trim();
+        setOriginalMessage(messageToProcess);
+        setInputText('');
+        setIsGenerating(true);
 
-        if (conflictCheck.isConflict && conflictCheck.pattern) {
-            // Intercept the message
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            setOriginalMessage(inputText);
-            setInterceptedPattern(conflictCheck.pattern);
-            setSelectedSuggestionIndex(0);
-            setShowInterceptModal(true);
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
 
-            // Shake animation
-            shakeX.value = withSequence(
-                withTiming(-10, { duration: 50 }),
-                withRepeat(withTiming(10, { duration: 100 }), 4, true),
-                withTiming(0, { duration: 50 })
-            );
-        } else {
-            // Send normally
-            sendMessage(inputText);
+        try {
+            const result = await generateSafeCommunicationOptions(messageToProcess);
+
+            if (result.success && result.options.length > 0) {
+                setCommunicationOptions(result.options);
+                setSelectedOptionIndex(null);
+                setShowOptionsModal(true);
+            } else {
+                // If generation fails, send original message
+                sendMessage(messageToProcess, false);
+            }
+        } catch (error) {
+            console.error('Failed to generate options:', error);
+            sendMessage(messageToProcess, false);
+        } finally {
+            setIsGenerating(false);
         }
     };
 
@@ -100,8 +91,10 @@ export default function ChatBuffer({
             senderName: currentUserName,
             content,
         });
-        setInputText('');
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
 
         if (usedSuggestion) {
             updateCommunicationScore(1);
@@ -113,69 +106,44 @@ export default function ChatBuffer({
         }, 100);
     };
 
-    const handleSendAnyway = () => {
-        sendMessage(originalMessage);
-        setShowInterceptModal(false);
-        setInterceptedPattern(null);
-        setOriginalMessage('');
-    };
-
-    const handleUseSuggestion = () => {
-        if (interceptedPattern) {
-            const alternatives = getAlternativeSuggestions(interceptedPattern);
-            const suggestion = selectedSuggestionIndex === 0
-                ? getSuggestion(interceptedPattern)
-                : alternatives[selectedSuggestionIndex - 1];
-            sendMessage(suggestion, true);
+    const handleSelectOption = (index: number) => {
+        setSelectedOptionIndex(index);
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }
-        setShowInterceptModal(false);
-        setInterceptedPattern(null);
+    };
+
+    const handleConfirmSelection = () => {
+        if (selectedOptionIndex !== null && communicationOptions[selectedOptionIndex]) {
+            sendMessage(communicationOptions[selectedOptionIndex].text, true);
+            if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+        }
+        closeModal();
+    };
+
+    const handleSendOriginal = () => {
+        sendMessage(originalMessage, false);
+        closeModal();
+    };
+
+    const closeModal = () => {
+        setShowOptionsModal(false);
+        setCommunicationOptions([]);
         setOriginalMessage('');
-    };
-
-    const handleCancel = () => {
-        setShowInterceptModal(false);
-        setInterceptedPattern(null);
-        setOriginalMessage('');
-    };
-
-    const handleMoodSelect = (mood: EmotionType) => {
-        setCurrentMood(mood);
-        logEmotion(mood);
-        setShowMoodPicker(false);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    };
-
-    const getMoodEmoji = (mood: EmotionType) => {
-        const moodMap: Record<EmotionType, string> = {
-            neutral: '😐',
-            positive: '😊',
-            negative: '😢',
-            frustrated: '😤',
-            supportive: '🤗',
-            grateful: '🙏',
-        };
-        return moodMap[mood];
+        setSelectedOptionIndex(null);
     };
 
     const inputStyle = useAnimatedStyle(() => ({
         transform: [{ translateX: shakeX.value }],
     }));
 
-    const getCategoryLabel = (category: string) => {
-        switch (category) {
-            case 'blame': return '🚨 责备语气';
-            case 'accusation': return '⚠️ 指责语气';
-            case 'criticism': return '😤 批评语气';
-            case 'generalization': return '📢 以偏概全';
-            default: return '⚠️ 冲突风险';
-        }
-    };
-
-    const getSeverityColor = (severity: number) => {
-        if (severity >= 3) return Colors.error;
-        if (severity >= 2) return Colors.warning;
-        return Colors.secondary;
+    const getStyleEmoji = (style: string) => {
+        if (style.includes('询问') || style.includes('温和')) return '💭';
+        if (style.includes('共情') || style.includes('理解')) return '💝';
+        if (style.includes('合作') || style.includes('积极')) return '🤝';
+        return '✨';
     };
 
     return (
@@ -184,7 +152,7 @@ export default function ChatBuffer({
             <View style={styles.header}>
                 <View>
                     <Text style={styles.title}>💬 安全沟通</Text>
-                    <Text style={styles.subtitle}>AI 帮你避免冲突性语言</Text>
+                    <Text style={styles.subtitle}>AI 帮你优化表达方式</Text>
                 </View>
                 <View style={styles.peaceBadge}>
                     <Text style={styles.peaceEmoji}>🕊️</Text>
@@ -201,9 +169,9 @@ export default function ChatBuffer({
                 {messages.length === 0 ? (
                     <View style={styles.emptyState}>
                         <Text style={styles.emptyIcon}>💌</Text>
-                        <Text style={styles.emptyText}>开始温和的对话</Text>
+                        <Text style={styles.emptyText}>开始安全沟通</Text>
                         <Text style={styles.emptyHint}>
-                            AI 会帮你检测可能引发冲突的语言
+                            输入你想说的话，AI 会帮你生成{'\n'}三个更温和的表达方式供你选择
                         </Text>
                     </View>
                 ) : (
@@ -216,15 +184,15 @@ export default function ChatBuffer({
                                 msg.senderId === currentUserId
                                     ? styles.myMessage
                                     : styles.theirMessage,
-                                msg.wasIntercepted && styles.interceptedMessage,
+                                msg.wasIntercepted && styles.optimizedMessage,
                             ]}
                         >
                             <Text style={styles.senderName}>{msg.senderName}</Text>
                             <Text style={styles.messageText}>{msg.content}</Text>
                             {msg.wasIntercepted && (
-                                <View style={styles.interceptedBadge}>
-                                    <Text style={styles.interceptedText}>
-                                        ✨ 已优化表达
+                                <View style={styles.optimizedBadge}>
+                                    <Text style={styles.optimizedText}>
+                                        ✨ 优化表达
                                     </Text>
                                 </View>
                             )}
@@ -246,86 +214,115 @@ export default function ChatBuffer({
                 <Animated.View style={[styles.inputContainer, inputStyle]}>
                     <TextInput
                         style={styles.input}
-                        placeholder="输入消息..."
+                        placeholder="输入你想表达的话..."
                         placeholderTextColor={Colors.textMuted}
                         value={inputText}
                         onChangeText={setInputText}
                         multiline
                         maxLength={500}
+                        editable={!isGenerating}
                     />
                     <TouchableOpacity
                         style={[
                             styles.sendButton,
-                            !inputText.trim() && styles.sendButtonDisabled
+                            (!inputText.trim() || isGenerating) && styles.sendButtonDisabled
                         ]}
                         onPress={handleSend}
-                        disabled={!inputText.trim()}
+                        disabled={!inputText.trim() || isGenerating}
                     >
-                        <Text style={styles.sendButtonText}>发送</Text>
+                        {isGenerating ? (
+                            <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                            <Text style={styles.sendButtonText}>优化</Text>
+                        )}
                     </TouchableOpacity>
                 </Animated.View>
             </KeyboardAvoidingView>
 
-            {/* Intercept Modal */}
+            {/* Options Selection Modal */}
             <Modal
-                visible={showInterceptModal}
+                visible={showOptionsModal}
                 transparent
                 animationType="fade"
-                onRequestClose={handleCancel}
+                onRequestClose={closeModal}
             >
                 <View style={styles.modalOverlay}>
                     <Animated.View
                         entering={SlideInDown.springify()}
-                        style={styles.interceptModal}
+                        style={styles.optionsModal}
                     >
-                        <View style={styles.warningHeader}>
-                            <Text style={styles.warningIcon}>⚠️</Text>
-                            <Text style={styles.warningTitle}>检测到冲突风险</Text>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalIcon}>✨</Text>
+                            <Text style={styles.modalTitle}>选择表达方式</Text>
                         </View>
 
-                        {interceptedPattern && (
-                            <View style={styles.categoryBadge}>
-                                <Text style={styles.categoryText}>
-                                    {getCategoryLabel(interceptedPattern.category)}
-                                </Text>
-                            </View>
-                        )}
-
-                        <View style={styles.originalMessageBox}>
-                            <Text style={styles.boxLabel}>你的原话</Text>
+                        <View style={styles.originalBox}>
+                            <Text style={styles.boxLabel}>你想说的</Text>
                             <Text style={styles.originalText}>"{originalMessage}"</Text>
                         </View>
 
-                        <View style={styles.suggestionBox}>
-                            <Text style={styles.boxLabel}>💡 建议的表达方式</Text>
-                            <Text style={styles.suggestionText}>
-                                "{interceptedPattern ? getSuggestion(interceptedPattern) : ''}"
-                            </Text>
-                        </View>
+                        <Text style={styles.optionsLabel}>AI 优化的三个版本：</Text>
 
-                        <Text style={styles.explainText}>
-                            使用"我"开头的表达可以减少对方的防御心理，更容易达成理解。
-                        </Text>
+                        <View style={styles.optionsContainer}>
+                            {communicationOptions.map((option, index) => (
+                                <TouchableOpacity
+                                    key={index}
+                                    style={[
+                                        styles.optionCard,
+                                        selectedOptionIndex === index && styles.optionCardSelected,
+                                    ]}
+                                    onPress={() => handleSelectOption(index)}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={styles.optionHeader}>
+                                        <Text style={styles.optionEmoji}>
+                                            {getStyleEmoji(option.style)}
+                                        </Text>
+                                        <Text style={[
+                                            styles.optionStyle,
+                                            selectedOptionIndex === index && styles.optionStyleSelected,
+                                        ]}>
+                                            {option.style}
+                                        </Text>
+                                        {selectedOptionIndex === index && (
+                                            <Text style={styles.checkMark}>✓</Text>
+                                        )}
+                                    </View>
+                                    <Text style={[
+                                        styles.optionText,
+                                        selectedOptionIndex === index && styles.optionTextSelected,
+                                    ]}>
+                                        "{option.text}"
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
 
                         <View style={styles.modalActions}>
                             <TouchableOpacity
-                                style={styles.useSuggestionButton}
-                                onPress={handleUseSuggestion}
+                                style={[
+                                    styles.confirmButton,
+                                    selectedOptionIndex === null && styles.confirmButtonDisabled,
+                                ]}
+                                onPress={handleConfirmSelection}
+                                disabled={selectedOptionIndex === null}
                             >
-                                <Text style={styles.useSuggestionText}>✨ 使用建议</Text>
+                                <Text style={styles.confirmButtonText}>
+                                    发送选中的表达
+                                </Text>
                             </TouchableOpacity>
 
                             <View style={styles.secondaryActions}>
                                 <TouchableOpacity
-                                    style={styles.sendAnywayButton}
-                                    onPress={handleSendAnyway}
+                                    style={styles.sendOriginalButton}
+                                    onPress={handleSendOriginal}
                                 >
-                                    <Text style={styles.sendAnywayText}>仍然发送</Text>
+                                    <Text style={styles.sendOriginalText}>发送原话</Text>
                                 </TouchableOpacity>
 
                                 <TouchableOpacity
                                     style={styles.cancelButton}
-                                    onPress={handleCancel}
+                                    onPress={closeModal}
                                 >
                                     <Text style={styles.cancelText}>取消</Text>
                                 </TouchableOpacity>
@@ -406,6 +403,7 @@ const styles = StyleSheet.create({
         fontSize: FontSizes.sm,
         color: Colors.textMuted,
         textAlign: 'center',
+        lineHeight: FontSizes.sm * 1.5,
     },
     messageBubble: {
         maxWidth: '80%',
@@ -423,7 +421,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.surfaceElevated,
         borderBottomLeftRadius: 4,
     },
-    interceptedMessage: {
+    optimizedMessage: {
         borderWidth: 1,
         borderColor: Colors.success + '50',
     },
@@ -437,10 +435,10 @@ const styles = StyleSheet.create({
         color: Colors.textPrimary,
         lineHeight: FontSizes.md * 1.4,
     },
-    interceptedBadge: {
+    optimizedBadge: {
         marginTop: Spacing.xs,
     },
-    interceptedText: {
+    optimizedText: {
         fontSize: FontSizes.xs,
         color: Colors.success,
     },
@@ -472,6 +470,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.lg,
         justifyContent: 'center',
         alignItems: 'center',
+        minWidth: 60,
     },
     sendButtonDisabled: {
         backgroundColor: Colors.surfaceElevated,
@@ -488,48 +487,34 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: Spacing.lg,
     },
-    interceptModal: {
+    optionsModal: {
         backgroundColor: Colors.surface,
         borderRadius: BorderRadius.xl,
         padding: Spacing.xl,
         width: '100%',
-        maxWidth: 400,
+        maxWidth: 420,
+        maxHeight: '90%',
     },
-    warningHeader: {
+    modalHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: Spacing.md,
+        marginBottom: Spacing.lg,
         gap: Spacing.sm,
     },
-    warningIcon: {
-        fontSize: 32,
+    modalIcon: {
+        fontSize: 28,
     },
-    warningTitle: {
+    modalTitle: {
         fontSize: FontSizes.xl,
         fontWeight: '700',
-        color: Colors.warning,
+        color: Colors.textPrimary,
     },
-    categoryBadge: {
-        alignSelf: 'center',
-        backgroundColor: Colors.warning + '20',
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.xs,
-        borderRadius: BorderRadius.full,
-        marginBottom: Spacing.lg,
-    },
-    categoryText: {
-        fontSize: FontSizes.sm,
-        color: Colors.warning,
-        fontWeight: '600',
-    },
-    originalMessageBox: {
-        backgroundColor: Colors.error + '10',
+    originalBox: {
+        backgroundColor: Colors.surfaceElevated,
         borderRadius: BorderRadius.lg,
         padding: Spacing.md,
-        marginBottom: Spacing.md,
-        borderLeftWidth: 4,
-        borderLeftColor: Colors.error,
+        marginBottom: Spacing.lg,
     },
     boxLabel: {
         fontSize: FontSizes.xs,
@@ -538,38 +523,73 @@ const styles = StyleSheet.create({
     },
     originalText: {
         fontSize: FontSizes.md,
-        color: Colors.textPrimary,
+        color: Colors.textSecondary,
         fontStyle: 'italic',
     },
-    suggestionBox: {
-        backgroundColor: Colors.success + '10',
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.md,
-        marginBottom: Spacing.md,
-        borderLeftWidth: 4,
-        borderLeftColor: Colors.success,
-    },
-    suggestionText: {
-        fontSize: FontSizes.md,
-        color: Colors.textPrimary,
-    },
-    explainText: {
+    optionsLabel: {
         fontSize: FontSizes.sm,
         color: Colors.textSecondary,
-        textAlign: 'center',
+        marginBottom: Spacing.md,
+    },
+    optionsContainer: {
+        gap: Spacing.sm,
         marginBottom: Spacing.lg,
-        lineHeight: FontSizes.sm * 1.5,
+    },
+    optionCard: {
+        backgroundColor: Colors.surfaceElevated,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    optionCardSelected: {
+        borderColor: Colors.success,
+        backgroundColor: Colors.success + '10',
+    },
+    optionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: Spacing.xs,
+        gap: Spacing.xs,
+    },
+    optionEmoji: {
+        fontSize: 18,
+    },
+    optionStyle: {
+        fontSize: FontSizes.sm,
+        fontWeight: '600',
+        color: Colors.textSecondary,
+        flex: 1,
+    },
+    optionStyleSelected: {
+        color: Colors.success,
+    },
+    checkMark: {
+        fontSize: FontSizes.md,
+        color: Colors.success,
+        fontWeight: '700',
+    },
+    optionText: {
+        fontSize: FontSizes.md,
+        color: Colors.textPrimary,
+        lineHeight: FontSizes.md * 1.4,
+    },
+    optionTextSelected: {
+        color: Colors.textPrimary,
     },
     modalActions: {
         gap: Spacing.md,
     },
-    useSuggestionButton: {
+    confirmButton: {
         backgroundColor: Colors.success,
         borderRadius: BorderRadius.lg,
         paddingVertical: Spacing.md,
         alignItems: 'center',
     },
-    useSuggestionText: {
+    confirmButtonDisabled: {
+        backgroundColor: Colors.surfaceElevated,
+    },
+    confirmButtonText: {
         color: '#FFF',
         fontSize: FontSizes.md,
         fontWeight: '700',
@@ -578,13 +598,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: Spacing.md,
     },
-    sendAnywayButton: {
+    sendOriginalButton: {
         flex: 1,
         paddingVertical: Spacing.md,
         alignItems: 'center',
+        backgroundColor: Colors.surfaceElevated,
+        borderRadius: BorderRadius.lg,
     },
-    sendAnywayText: {
-        color: Colors.textMuted,
+    sendOriginalText: {
+        color: Colors.textSecondary,
         fontSize: FontSizes.sm,
     },
     cancelButton: {

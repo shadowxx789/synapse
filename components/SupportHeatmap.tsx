@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Platform } from 'react-native';
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 
 interface HeatmapData {
@@ -46,7 +46,7 @@ const getHeatColor = (value: number, maxValue: number): { bg: string; glow: stri
         textColor: '#FFF'
     };
     return {
-        bg: 'linear-gradient(135deg, rgba(78, 205, 196, 0.8), rgba(126, 221, 214, 0.9))',
+        bg: Colors.supporter.accent,
         glow: 'rgba(78, 205, 196, 0.4)',
         textColor: '#FFF'
     };
@@ -231,12 +231,28 @@ const styles = StyleSheet.create({
     cellHighActivity: {
         borderWidth: 2,
         borderColor: Colors.supporter.accent,
-        boxShadow: '0px 0px 8px rgba(78, 205, 196, 0.3)',
-        elevation: 4,
+        ...Platform.select({
+            web: { boxShadow: '0px 0px 8px rgba(78, 205, 196, 0.3)' },
+            default: {
+                shadowColor: 'rgba(78, 205, 196, 0.3)',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 4,
+            },
+        }),
     },
     cellStreak: {
-        boxShadow: '0px 0px 6px rgba(255, 215, 0, 0.4)',
-        elevation: 3,
+        ...Platform.select({
+            web: { boxShadow: '0px 0px 6px rgba(255, 215, 0, 0.4)' },
+            default: {
+                shadowColor: 'rgba(255, 215, 0, 0.4)',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.4,
+                shadowRadius: 6,
+                elevation: 3,
+            },
+        }),
     },
     emptyCell: {
         backgroundColor: 'transparent',

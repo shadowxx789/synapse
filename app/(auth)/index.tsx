@@ -302,11 +302,28 @@ const styles = StyleSheet.create({
     continueButton: {
         borderRadius: BorderRadius.lg,
         overflow: 'hidden',
-        boxShadow: `0px 4px 8px rgba(255, 107, 53, 0.4)`,
-        elevation: 6,
+        ...Platform.select({
+            web: { boxShadow: '0px 4px 8px rgba(255, 107, 53, 0.4)' },
+            default: {
+                shadowColor: 'rgba(255, 107, 53, 0.4)',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 8,
+                elevation: 6,
+            },
+        }),
     },
     continueButtonDisabled: {
-        boxShadow: 'none',
+        ...Platform.select({
+            web: { boxShadow: 'none' },
+            default: {
+                shadowColor: 'transparent',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0,
+                shadowRadius: 0,
+                elevation: 0,
+            },
+        }),
     },
     buttonGradient: {
         paddingVertical: Spacing.lg,

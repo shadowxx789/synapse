@@ -29,6 +29,33 @@ export const DEFAULT_REMINDER_PROMPT = `你是一个温和的沟通助手，专�
 
 直接返回生成的提醒消息文本，不要加任何额外说明。`;
 
+// Default system prompt for safe communication (NVC-based)
+export const DEFAULT_SAFE_COMMUNICATION_PROMPT = `你是一个专业的非暴力沟通（NVC）专家，帮助 ADHD 伴侣之间进行安全、有效的沟通。
+
+用户会输入他们想表达的话，你需要生成三个不同版本的优化表达，帮助用户用更温和、更有建设性的方式传达同样的意思。
+
+三个版本应该有不同的风格：
+1. **温和询问版**：用"我"开头，表达感受和需求，询问对方的想法
+2. **共情理解版**：先表达对对方的理解，再温和地提出自己的需求
+3. **积极合作版**：强调一起解决问题，使用"我们"的视角
+
+规则：
+1. 保留用户原本想表达的核心意思
+2. 去除任何指责、批评、以偏概全的语气
+3. 使用"我感到..."、"我需要..."、"我希望..."等NVC句式
+4. 每个版本控制在50字以内
+5. 语言要自然，不要太正式
+6. 可以适当使用emoji增加亲和力
+
+返回JSON格式：
+{
+  "versions": [
+    {"style": "温和询问", "text": "优化后的表达"},
+    {"style": "共情理解", "text": "优化后的表达"},
+    {"style": "积极合作", "text": "优化后的表达"}
+  ]
+}`;
+
 export interface AIProvider {
     id: string;
     name: string;
@@ -68,6 +95,7 @@ interface AISettingsState {
     // Custom prompts
     taskShredPrompt: string;
     reminderPrompt: string;
+    safeCommunicationPrompt: string;
 
     // Computed
     isConfigured: boolean;
@@ -79,8 +107,10 @@ interface AISettingsState {
     setCustomModel: (model: string) => void;
     setTaskShredPrompt: (prompt: string) => void;
     setReminderPrompt: (prompt: string) => void;
+    setSafeCommunicationPrompt: (prompt: string) => void;
     resetTaskShredPromptToDefault: () => void;
     resetReminderPromptToDefault: () => void;
+    resetSafeCommunicationPromptToDefault: () => void;
     getEffectiveConfig: () => { baseUrl: string; model: string; apiKey: string };
 }
 
@@ -93,6 +123,7 @@ export const useAISettingsStore = create<AISettingsState>()(
             customModel: '',
             taskShredPrompt: DEFAULT_TASK_SHRED_PROMPT,
             reminderPrompt: DEFAULT_REMINDER_PROMPT,
+            safeCommunicationPrompt: DEFAULT_SAFE_COMMUNICATION_PROMPT,
 
             get isConfigured() {
                 const state = get();
@@ -111,9 +142,13 @@ export const useAISettingsStore = create<AISettingsState>()(
 
             setReminderPrompt: (reminderPrompt) => set({ reminderPrompt }),
 
+            setSafeCommunicationPrompt: (safeCommunicationPrompt) => set({ safeCommunicationPrompt }),
+
             resetTaskShredPromptToDefault: () => set({ taskShredPrompt: DEFAULT_TASK_SHRED_PROMPT }),
 
             resetReminderPromptToDefault: () => set({ reminderPrompt: DEFAULT_REMINDER_PROMPT }),
+
+            resetSafeCommunicationPromptToDefault: () => set({ safeCommunicationPrompt: DEFAULT_SAFE_COMMUNICATION_PROMPT }),
 
             getEffectiveConfig: () => {
                 const state = get();
@@ -144,6 +179,7 @@ export const useAISettingsStore = create<AISettingsState>()(
                 customModel: state.customModel,
                 taskShredPrompt: state.taskShredPrompt,
                 reminderPrompt: state.reminderPrompt,
+                safeCommunicationPrompt: state.safeCommunicationPrompt,
             }),
         }
     )

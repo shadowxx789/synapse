@@ -29,6 +29,16 @@ interface RewardState {
     mergeRemoteRewards: (remoteRewards: Reward[]) => void;
 }
 
+const toDate = (value: Date | string | null | undefined): Date | null => {
+    if (!value) return null;
+    return value instanceof Date ? value : new Date(value);
+};
+
+const normalizeReward = (reward: Reward): Reward => ({
+    ...reward,
+    redeemedAt: toDate(reward.redeemedAt) || undefined,
+});
+
 // Default rewards (used when offline and no rewards exist)
 const DEFAULT_REWARDS: Reward[] = [
     {
@@ -145,6 +155,10 @@ export const useRewardStore = create<RewardState>()(
         {
             name: 'synapse-reward-storage',
             storage: createJSONStorage(() => AsyncStorage),
+            onRehydrateStorage: () => (state) => {
+                if (!state) return;
+                state.rewards = state.rewards.map(normalizeReward);
+            },
             partialize: (state) => ({
                 rewards: state.rewards,
             }),

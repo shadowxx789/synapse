@@ -16,7 +16,6 @@ import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 import {
     useAISettingsStore,
     AI_PROVIDERS,
-    DEFAULT_TASK_SHRED_PROMPT,
 } from '@/stores/aiSettingsStore';
 import { shredTask } from '@/services/ai';
 
@@ -32,12 +31,15 @@ export default function AISettings({ isVisible, onClose }: AISettingsProps) {
         customBaseUrl,
         customModel,
         taskShredPrompt,
+        reminderPrompt,
         setProvider,
         setApiKey,
         setCustomBaseUrl,
         setCustomModel,
         setTaskShredPrompt,
-        resetPromptToDefault,
+        setReminderPrompt,
+        resetTaskShredPromptToDefault,
+        resetReminderPromptToDefault,
     } = useAISettingsStore();
 
     const [showApiKey, setShowApiKey] = useState(false);
@@ -81,13 +83,30 @@ export default function AISettings({ isVisible, onClose }: AISettingsProps) {
     const handleResetPrompt = () => {
         Alert.alert(
             '重置提示词',
-            '确定要恢复默认提示词吗？',
+            '确定要恢复默认任务拆解提示词吗？',
             [
                 { text: '取消', style: 'cancel' },
                 {
                     text: '确定',
                     onPress: () => {
-                        resetPromptToDefault();
+                        resetTaskShredPromptToDefault();
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    },
+                },
+            ]
+        );
+    };
+
+    const handleResetReminderPrompt = () => {
+        Alert.alert(
+            '重置提示词',
+            '确定要恢复默认提醒消息提示词吗？',
+            [
+                { text: '取消', style: 'cancel' },
+                {
+                    text: '确定',
+                    onPress: () => {
+                        resetReminderPromptToDefault();
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     },
                 },
@@ -254,6 +273,28 @@ export default function AISettings({ isVisible, onClose }: AISettingsProps) {
                             />
                             <Text style={styles.promptHint}>
                                 💡 提示词决定了 AI 如何拆解任务。建议保留 JSON 输出格式要求。
+                            </Text>
+                        </View>
+
+                        {/* Reminder Prompt */}
+                        <View style={styles.section}>
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionTitle}>提醒消息提示词</Text>
+                                <TouchableOpacity onPress={handleResetReminderPrompt}>
+                                    <Text style={styles.resetButton}>恢复默认</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <TextInput
+                                style={[styles.input, styles.promptInput]}
+                                placeholder="自定义 AI 生成温和提醒的提示词..."
+                                placeholderTextColor={Colors.textMuted}
+                                value={reminderPrompt}
+                                onChangeText={setReminderPrompt}
+                                multiline
+                                textAlignVertical="top"
+                            />
+                            <Text style={styles.promptHint}>
+                                💡 这个提示词用于"AI 代替催促"功能，生成温和、支持性的提醒消息。
                             </Text>
                         </View>
 

@@ -7,6 +7,7 @@ import {
     ScrollView,
     TextInput,
     Modal,
+    Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -73,7 +74,12 @@ export default function RewardShop({ onRewardRedeemed }: RewardShopProps) {
             </View>
 
             {/* Energy balance as a gift card */}
-            <View style={styles.balanceCard}>
+            <LinearGradient
+                colors={['rgba(255, 215, 0, 0.12)', 'rgba(78, 205, 196, 0.12)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.balanceCard}
+            >
                 <Text style={styles.balanceLabel}>当前可用</Text>
                 <View style={styles.balanceRow}>
                     <Text style={styles.balanceValue}>{totalPoints}</Text>
@@ -82,7 +88,7 @@ export default function RewardShop({ onRewardRedeemed }: RewardShopProps) {
                 <Text style={styles.balanceHint}>
                     {totalPoints >= 100 ? '🎉 可以兑换惊喜啦！' : `还差 ${100 - totalPoints} 点哦`}
                 </Text>
-            </View>
+            </LinearGradient>
 
             {/* Gift cards */}
             <Text style={styles.sectionTitle}>兑换惊喜</Text>
@@ -99,38 +105,62 @@ export default function RewardShop({ onRewardRedeemed }: RewardShopProps) {
                             entering={FadeInUp.delay(index * 100)}
                         >
                             <TouchableOpacity
-                                style={[
-                                    styles.rewardCard,
-                                    canAfford && styles.rewardCardAffordable,
-                                    !canAfford && styles.rewardCardDisabled
-                                ]}
                                 onPress={() => handleRedeem(reward)}
                                 disabled={!canAfford}
                                 activeOpacity={0.8}
                             >
-                                {/* Gift ribbon effect */}
-                                <View style={styles.giftRibbon} />
+                                {canAfford ? (
+                                    <LinearGradient
+                                        colors={['rgba(78, 205, 196, 0.16)', 'rgba(126, 221, 214, 0.2)']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={[styles.rewardCard, styles.rewardCardAffordable]}
+                                    >
+                                        {/* Gift ribbon effect */}
+                                        <View style={styles.giftRibbon} />
 
-                                <View style={styles.rewardIconContainer}>
-                                    <Text style={styles.rewardIcon}>{reward.icon}</Text>
-                                </View>
+                                        <View style={styles.rewardIconContainer}>
+                                            <Text style={styles.rewardIcon}>{reward.icon}</Text>
+                                        </View>
 
-                                <Text style={styles.rewardTitle}>{reward.title}</Text>
-                                <Text style={styles.rewardDesc} numberOfLines={2}>
-                                    {reward.description}
-                                </Text>
+                                        <Text style={styles.rewardTitle}>{reward.title}</Text>
+                                        <Text style={styles.rewardDesc} numberOfLines={2}>
+                                            {reward.description}
+                                        </Text>
 
-                                <View style={[
-                                    styles.rewardCost,
-                                    canAfford && styles.rewardCostAffordable
-                                ]}>
-                                    <Text style={[
-                                        styles.rewardCostText,
-                                        canAfford && styles.rewardCostTextAffordable
-                                    ]}>
-                                        {canAfford ? '兑换 ' : ''}{reward.pointsCost}⚡
-                                    </Text>
-                                </View>
+                                        <View style={[
+                                            styles.rewardCost,
+                                            styles.rewardCostAffordable
+                                        ]}>
+                                            <Text style={[
+                                                styles.rewardCostText,
+                                                styles.rewardCostTextAffordable
+                                            ]}>
+                                                兑换 {reward.pointsCost}⚡
+                                            </Text>
+                                        </View>
+                                    </LinearGradient>
+                                ) : (
+                                    <View style={[styles.rewardCard, styles.rewardCardDefault, styles.rewardCardDisabled]}>
+                                        {/* Gift ribbon effect */}
+                                        <View style={styles.giftRibbon} />
+
+                                        <View style={styles.rewardIconContainer}>
+                                            <Text style={styles.rewardIcon}>{reward.icon}</Text>
+                                        </View>
+
+                                        <Text style={styles.rewardTitle}>{reward.title}</Text>
+                                        <Text style={styles.rewardDesc} numberOfLines={2}>
+                                            {reward.description}
+                                        </Text>
+
+                                        <View style={styles.rewardCost}>
+                                            <Text style={styles.rewardCostText}>
+                                                {reward.pointsCost}⚡
+                                            </Text>
+                                        </View>
+                                    </View>
+                                )}
                             </TouchableOpacity>
                         </Animated.View>
                     );
@@ -273,7 +303,6 @@ const styles = StyleSheet.create({
         fontSize: FontSizes.xl,
     },
     balanceCard: {
-        backgroundColor: 'linear-gradient(135deg, rgba(255,215,0,0.1), rgba(78,205,196,0.1))',
         borderRadius: BorderRadius.xxl,
         padding: Spacing.lg,
         marginBottom: Spacing.lg,
@@ -317,14 +346,15 @@ const styles = StyleSheet.create({
     },
     rewardCard: {
         width: 150,
-        backgroundColor: Colors.surfaceElevated,
         borderRadius: BorderRadius.xxl,
         padding: Spacing.md,
         alignItems: 'center',
         position: 'relative',
     },
+    rewardCardDefault: {
+        backgroundColor: Colors.surfaceElevated,
+    },
     rewardCardAffordable: {
-        backgroundColor: 'linear-gradient(135deg, rgba(78,205,196,0.1), rgba(126,221,214,0.15))',
         borderWidth: 2,
         borderColor: Colors.supporter.primary,
     },
@@ -341,8 +371,16 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.energyGlow,
         justifyContent: 'center',
         alignItems: 'center',
-        boxShadow: '0px 2px 4px rgba(255, 215, 0, 0.3)',
-        elevation: 4,
+        ...Platform.select({
+            web: { boxShadow: '0px 2px 4px rgba(255, 215, 0, 0.3)' },
+            default: {
+                shadowColor: 'rgba(255, 215, 0, 0.3)',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.3,
+                shadowRadius: 4,
+                elevation: 4,
+            },
+        }),
     },
     rewardIconContainer: {
         width: 64,

@@ -29,6 +29,16 @@ interface EnergyState {
     mergeRemoteActions: (remoteActions: EnergyAction[]) => void;
 }
 
+const toDate = (value: Date | string | null | undefined): Date | null => {
+    if (!value) return null;
+    return value instanceof Date ? value : new Date(value);
+};
+
+const normalizeAction = (action: EnergyAction): EnergyAction => ({
+    ...action,
+    timestamp: toDate(action.timestamp) || new Date(),
+});
+
 // Points for each action type
 export const ACTION_POINTS: Record<ActionType, number> = {
     instruction_shred: 10,
@@ -101,6 +111,10 @@ export const useEnergyStore = create<EnergyState>()(
         {
             name: 'synapse-energy-storage',
             storage: createJSONStorage(() => AsyncStorage),
+            onRehydrateStorage: () => (state) => {
+                if (!state) return;
+                state.actions = state.actions.map(normalizeAction);
+            },
             partialize: (state) => ({
                 actions: state.actions,
                 totalPoints: state.totalPoints,

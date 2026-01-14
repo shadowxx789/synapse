@@ -18,7 +18,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
-import { ShredResult } from '@/services/ai';
+import { ShredResult, shredTask } from '@/services/ai';
 import { useEnergyStore, ACTION_POINTS } from '@/stores/energyStore';
 import SupportHeatmap from '@/components/SupportHeatmap';
 import RewardShop from '@/components/RewardShop';
@@ -87,62 +87,10 @@ export default function SupporterHomeScreen() {
         setIsLoading(true);
 
         try {
-            // Smart AI-like task shredding based on task type
-            const taskLower = taskInput.toLowerCase();
-            let subtasks: { title: string; estimatedMinutes: number; order: number }[] = [];
+            // Call the real AI service to shred the task
+            const result = await shredTask(taskInput);
 
-            if (taskLower.includes('整理') || taskLower.includes('收拾')) {
-                subtasks = [
-                    { title: '找一个空箱子或袋子放不需要的东西', estimatedMinutes: 1, order: 1 },
-                    { title: '先把最大的几件东西归位', estimatedMinutes: 2, order: 2 },
-                    { title: '整理桌面/台面上的小物品', estimatedMinutes: 2, order: 3 },
-                    { title: '擦拭表面灰尘', estimatedMinutes: 1, order: 4 },
-                    { title: '检查一遍，确保看起来整洁', estimatedMinutes: 1, order: 5 },
-                ];
-            } else if (taskLower.includes('做饭') || taskLower.includes('晚餐') || taskLower.includes('午餐')) {
-                subtasks = [
-                    { title: '决定今天要做什么菜', estimatedMinutes: 1, order: 1 },
-                    { title: '检查食材是否齐全', estimatedMinutes: 1, order: 2 },
-                    { title: '洗菜和准备食材', estimatedMinutes: 2, order: 3 },
-                    { title: '开始烹饪', estimatedMinutes: 2, order: 4 },
-                    { title: '装盘并清理灶台', estimatedMinutes: 2, order: 5 },
-                ];
-            } else if (taskLower.includes('洗') || taskLower.includes('清洁')) {
-                subtasks = [
-                    { title: '准备清洁用品', estimatedMinutes: 1, order: 1 },
-                    { title: '从最脏的地方开始', estimatedMinutes: 2, order: 2 },
-                    { title: '仔细清洗每个角落', estimatedMinutes: 2, order: 3 },
-                    { title: '冲洗干净', estimatedMinutes: 1, order: 4 },
-                    { title: '擦干并放回原位', estimatedMinutes: 1, order: 5 },
-                ];
-            } else if (taskLower.includes('工作') || taskLower.includes('report') || taskLower.includes('报告')) {
-                subtasks = [
-                    { title: '关闭手机通知，准备专注', estimatedMinutes: 1, order: 1 },
-                    { title: '打开需要的文档/工具', estimatedMinutes: 1, order: 2 },
-                    { title: '完成第一个小部分', estimatedMinutes: 2, order: 3 },
-                    { title: '休息一下，喝口水', estimatedMinutes: 1, order: 4 },
-                    { title: '继续下一个部分', estimatedMinutes: 2, order: 5 },
-                ];
-            } else {
-                // Generic breakdown
-                subtasks = [
-                    { title: `开始准备${taskInput}`, estimatedMinutes: 1, order: 1 },
-                    { title: `执行${taskInput}的第一步`, estimatedMinutes: 2, order: 2 },
-                    { title: '完成主要内容', estimatedMinutes: 2, order: 3 },
-                    { title: '检查完成情况', estimatedMinutes: 1, order: 4 },
-                    { title: '收尾和整理', estimatedMinutes: 1, order: 5 },
-                ];
-            }
-
-            const mockResult: ShredResult = {
-                originalTask: taskInput,
-                subtasks,
-            };
-
-            // Simulate API delay
-            await new Promise(resolve => setTimeout(resolve, 1200));
-
-            setShredResult(mockResult);
+            setShredResult(result);
 
             // Award energy points
             addPoints({
@@ -155,6 +103,11 @@ export default function SupporterHomeScreen() {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (error) {
             console.error('Shred failed:', error);
+            Alert.alert(
+                '拆解失败',
+                'AI 任务拆解失败，请检查 AI 配置或稍后重试。',
+                [{ text: '好的' }]
+            );
         } finally {
             setIsLoading(false);
         }
@@ -492,8 +445,16 @@ const styles = StyleSheet.create({
         borderRadius: BorderRadius.full,
         borderWidth: 2,
         borderColor: Colors.energyGlow,
-        boxShadow: '0px 0px 8px rgba(255, 215, 0, 0.3)',
-        elevation: 4,
+        ...Platform.select({
+            web: { boxShadow: '0px 0px 8px rgba(255, 215, 0, 0.3)' },
+            default: {
+                shadowColor: 'rgba(255, 215, 0, 0.3)',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 4,
+            },
+        }),
     },
     energyIcon: {
         fontSize: 18,

@@ -4,33 +4,46 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type UserRole = 'executor' | 'supporter' | null;
 
-interface User {
+export interface User {
     id: string;
     email: string;
     name: string;
     role: UserRole;
     partnerId?: string;
     pairingCode?: string;
+    coupleId?: string;
 }
 
 interface UserState {
     user: User | null;
     isAuthenticated: boolean;
     isOnline: boolean;
+    coupleSecret: string | null; // AES-GCM encryption key for couple messages
+
+    // Actions
     setUser: (user: User | null) => void;
     setRole: (role: UserRole) => void;
     setPartnerId: (partnerId: string) => void;
     setPairingCode: (code: string) => void;
+    setCoupleId: (coupleId: string) => void;
+    setCoupleSecret: (secret: string | null) => void;
     setOnline: (online: boolean) => void;
+    updateUser: (updates: Partial<User>) => void;
     logout: () => void;
+
+    // Computed helpers
+    hasCompletedSetup: () => boolean;
+    needsRoleSelection: () => boolean;
+    needsPairing: () => boolean;
 }
 
 export const useUserStore = create<UserState>()(
     persist(
-        (set) => ({
+        (set, get) => ({
             user: null,
             isAuthenticated: false,
             isOnline: true,
+            coupleSecret: null,
 
             setUser: (user) => set({ user, isAuthenticated: !!user }),
 
@@ -46,13 +59,51 @@ export const useUserStore = create<UserState>()(
                 user: state.user ? { ...state.user, pairingCode } : null
             })),
 
+            setCoupleId: (coupleId) => set((state) => ({
+                user: state.user ? { ...state.user, coupleId } : null
+            })),
+
+            setCoupleSecret: (coupleSecret) => set({ coupleSecret }),
+
             setOnline: (isOnline) => set({ isOnline }),
 
-            logout: () => set({ user: null, isAuthenticated: false }),
+            updateUser: (updates) => set((state) => ({
+                user: state.user ? { ...state.user, ...updates } : null
+            })),
+
+            logout: () => set({ 
+                user: null, 
+                isAuthenticated: false,
+                coupleSecret: null,
+            }),
+
+            // Helper to check if user has completed all setup steps
+            hasCompletedSetup: () => {
+                const { user } = get();
+                return !!(user && user.role && user.partnerId);
+            },
+
+            // Helper to check if user needs to select role
+            needsRoleSelection: () => {
+                const { user } = get();
+                return !!(user && !user.role);
+            },
+
+            // Helper to check if user needs to pair with partner
+            needsPairing: () => {
+                const { user } = get();
+                return !!(user && user.role && !user.partnerId);
+            },
         }),
         {
             name: 'synapse-user-storage',
             storage: createJSONStorage(() => AsyncStorage),
+            partialize: (state) => ({
+                user: state.user,
+                isAuthenticated: state.isAuthenticated,
+                coupleSecret: state.coupleSecret,
+                // Don't persist isOnline - always start as true
+            }),
         }
     )
 );

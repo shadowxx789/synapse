@@ -132,8 +132,16 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderWidth: 2,
         borderColor: Colors.executor.glow,
-        boxShadow: '0px 8px 20px rgba(255, 107, 53, 0.25)',
-        elevation: 12,
+        ...Platform.select({
+            web: { boxShadow: '0px 8px 20px rgba(255, 107, 53, 0.25)' },
+            default: {
+                shadowColor: 'rgba(255, 107, 53, 0.25)',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.25,
+                shadowRadius: 12,
+                elevation: 12,
+            },
+        }),
         position: 'relative',
         minHeight: 280,
         justifyContent: 'center',
@@ -192,8 +200,16 @@ const styles = StyleSheet.create({
         marginTop: Spacing.xxl,
         borderRadius: BorderRadius.xl,
         overflow: 'hidden',
-        boxShadow: '0px 6px 16px rgba(255, 107, 53, 0.5)',
-        elevation: 10,
+        ...Platform.select({
+            web: { boxShadow: '0px 6px 16px rgba(255, 107, 53, 0.5)' },
+            default: {
+                shadowColor: 'rgba(255, 107, 53, 0.5)',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.5,
+                shadowRadius: 10,
+                elevation: 10,
+            },
+        }),
     },
     buttonGradient: {
         paddingVertical: Spacing.xl,

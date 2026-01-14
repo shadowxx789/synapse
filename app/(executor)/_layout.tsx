@@ -36,6 +36,14 @@ export default function ExecutorLayout() {
                 }}
             />
             <Tabs.Screen
+                name="buffer"
+                options={{
+                    tabBarIcon: ({ focused }) => (
+                        <TabIcon icon="🧠" label="减震" focused={focused} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
                 name="space"
                 options={{
                     tabBarIcon: ({ focused }) => (

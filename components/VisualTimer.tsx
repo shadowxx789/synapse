@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Animated, Dimensions, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
@@ -214,8 +214,16 @@ const styles = StyleSheet.create({
         borderWidth: 5,
         overflow: 'hidden',
         backgroundColor: Colors.surface,
-        boxShadow: '0px 0px 20px rgba(255, 107, 53, 0.3)',
-        elevation: 8,
+        ...Platform.select({
+            web: { boxShadow: '0px 0px 20px rgba(255, 107, 53, 0.3)' },
+            default: {
+                shadowColor: 'rgba(255, 107, 53, 0.3)',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.3,
+                shadowRadius: 20,
+                elevation: 8,
+            },
+        }),
     },
     sandFill: {
         position: 'absolute',
