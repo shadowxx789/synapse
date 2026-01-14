@@ -4,8 +4,6 @@ const { getDefaultConfig } = require('expo/metro-config');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-// Exclude 'mjs' from source extensions to avoid issues with libraries like 'zustand'
-// that ship untranspiled ESM using 'import.meta'
-config.resolver.sourceExts = config.resolver.sourceExts.filter(ext => ext !== 'mjs');
+// Keep 'mjs' support for ESM packages (e.g. Firebase). import.meta is handled by Babel.
 
 module.exports = config;
