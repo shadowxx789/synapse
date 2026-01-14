@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Unsubscribe } from 'firebase/firestore';
 
 import {
     userService,
@@ -76,6 +75,7 @@ export function useFirestoreTasks(userId: string | null) {
             ...task,
             id: '', // Will be set by Firebase
             createdAt: new Date(),
+            updatedAt: new Date(),
         });
         return taskService.create(firestoreTask);
     }, []);

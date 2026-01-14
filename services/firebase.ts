@@ -22,6 +22,8 @@ import { UserRole } from '@/stores/userStore';
 import { ActionType } from '@/stores/energyStore';
 import { Reward } from '@/stores/rewardStore';
 
+export type { Unsubscribe };
+
 // Firebase configuration from environment variables
 const firebaseConfig = {
     apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || '',
@@ -50,8 +52,44 @@ export interface FirestoreUser {
     role: UserRole;
     partnerId?: string;
     pairingCode?: string;
+    pairingCodeExpiresAt?: Timestamp;
+    coupleId?: string;
     createdAt: Timestamp;
     updatedAt: Timestamp;
+}
+
+export interface FirestoreCouple {
+    id: string;
+    executorId: string;
+    supporterId: string;
+    encryptionKeyHash: string;
+    createdAt: Timestamp;
+    status: 'active' | 'disconnected';
+}
+
+export type MessageType =
+    | 'text'
+    | 'task_request'
+    | 'task_update'
+    | 'energy_boost'
+    | 'energy_request'
+    | 'mood_share'
+    | 'system';
+
+export interface FirestoreMessage {
+    id: string;
+    coupleId: string;
+    senderId: string;
+    type: MessageType;
+    encryptedContent: string;
+    iv: string;
+    metadata?: {
+        messageType: MessageType;
+        hasAttachment: boolean;
+    };
+    createdAt: Timestamp;
+    readAt?: Timestamp;
+    readBy?: string;
 }
 
 export interface FirestoreTask {
@@ -64,6 +102,7 @@ export interface FirestoreTask {
     visualTimerMinutes: number;
     status: TaskStatus;
     createdAt: Timestamp;
+    updatedAt?: Timestamp;
     completedAt?: Timestamp;
     subtasks?: FirestoreTask[];
 }
@@ -101,6 +140,7 @@ const COLLECTIONS = {
     tasks: 'tasks',
     energyActions: 'energyActions',
     rewards: 'rewards',
+    messages: 'messages',
 } as const;
 
 // ============================================================================
@@ -131,29 +171,112 @@ export const userService = {
         });
     },
 
+    generatePairingCode(): string {
+        // Generate 6-character alphanumeric code (uppercase)
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded confusing chars: I, O, 0, 1
+        let code = '';
+        for (let i = 0; i < 6; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return code;
+    },
+
+    async generateAndSavePairingCode(userId: string): Promise<string> {
+        const code = this.generatePairingCode();
+        const expiresAt = Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000)); // 24 hours
+
+        await this.update(userId, {
+            pairingCode: code,
+            pairingCodeExpiresAt: expiresAt,
+        });
+
+        return code;
+    },
+
     async findByPairingCode(code: string): Promise<FirestoreUser | null> {
         const q = query(
             collection(db, COLLECTIONS.users),
-            where('pairingCode', '==', code)
+            where('pairingCode', '==', code.toUpperCase())
         );
         const snapshot = await getDocs(q);
-        return snapshot.empty ? null : (snapshot.docs[0].data() as FirestoreUser);
-    },
 
-    generatePairingCode(): string {
-        return Math.random().toString(36).substring(2, 8).toUpperCase();
+        if (snapshot.empty) return null;
+
+        const user = snapshot.docs[0].data() as FirestoreUser;
+
+        // Check if code has expired
+        if (user.pairingCodeExpiresAt && user.pairingCodeExpiresAt.toDate() < new Date()) {
+            return null; // Code expired
+        }
+
+        return user;
     },
 
     async pairWithPartner(userId: string, partnerCode: string): Promise<boolean> {
         const partner = await this.findByPairingCode(partnerCode);
         if (!partner || partner.id === userId) return false;
 
+        // Get current user to determine roles
+        const currentUser = await this.get(userId);
+        if (!currentUser) return false;
+
         // Create couple relationship
         const coupleId = [userId, partner.id].sort().join('_');
 
+        // Determine executor and supporter
+        const executorId = currentUser.role === 'executor' ? userId : partner.id;
+        const supporterId = currentUser.role === 'supporter' ? userId : partner.id;
+
+        // Create couple document
+        await coupleService.create({
+            id: coupleId,
+            executorId,
+            supporterId,
+            encryptionKeyHash: '', // Will be set when encryption is initialized
+            status: 'active',
+        });
+
+        // Update both users
         await Promise.all([
-            this.update(userId, { partnerId: partner.id }),
-            this.update(partner.id, { partnerId: userId }),
+            this.update(userId, {
+                partnerId: partner.id,
+                coupleId: coupleId,
+                pairingCode: undefined, // Clear pairing code after successful pair
+                pairingCodeExpiresAt: undefined,
+            }),
+            this.update(partner.id, {
+                partnerId: userId,
+                coupleId: coupleId,
+                pairingCode: undefined,
+                pairingCodeExpiresAt: undefined,
+            }),
+        ]);
+
+        return true;
+    },
+
+    async unpair(userId: string): Promise<boolean> {
+        const user = await this.get(userId);
+        if (!user || !user.partnerId) return false;
+
+        const partnerId = user.partnerId;
+        const coupleId = user.coupleId;
+
+        // Update couple status to disconnected
+        if (coupleId) {
+            await coupleService.update(coupleId, { status: 'disconnected' });
+        }
+
+        // Clear partner references
+        await Promise.all([
+            this.update(userId, {
+                partnerId: undefined,
+                coupleId: undefined,
+            }),
+            this.update(partnerId, {
+                partnerId: undefined,
+                coupleId: undefined,
+            }),
         ]);
 
         return true;
@@ -178,6 +301,7 @@ export const taskService = {
         await setDoc(taskRef, {
             ...taskWithId,
             createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
         });
         return taskRef.id;
     },
@@ -190,7 +314,10 @@ export const taskService = {
 
     async update(taskId: string, updates: Partial<FirestoreTask>): Promise<void> {
         const taskRef = doc(db, COLLECTIONS.tasks, taskId);
-        await updateDoc(taskRef, updates);
+        await updateDoc(taskRef, {
+            ...updates,
+            updatedAt: serverTimestamp(),
+        });
     },
 
     async delete(taskId: string): Promise<void> {
@@ -235,6 +362,7 @@ export const taskService = {
         return {
             ...firestoreTask,
             createdAt: firestoreTask.createdAt?.toDate() || new Date(),
+            updatedAt: firestoreTask.updatedAt?.toDate() || firestoreTask.createdAt?.toDate() || new Date(),
             completedAt: firestoreTask.completedAt?.toDate(),
             subtasks: firestoreTask.subtasks?.map((s) => this.toLocal(s)),
         };
@@ -242,14 +370,59 @@ export const taskService = {
 
     // Convert local Task to Firestore format
     toFirestore(task: Task): Omit<FirestoreTask, 'createdAt'> {
+        const { createdAt, completedAt, updatedAt, subtasks, ...rest } = task;
         return {
-            ...task,
-            completedAt: task.completedAt ? Timestamp.fromDate(task.completedAt) : undefined,
-            subtasks: task.subtasks?.map((s) => ({
+            ...rest,
+            completedAt: completedAt ? Timestamp.fromDate(completedAt) : undefined,
+            updatedAt: updatedAt ? Timestamp.fromDate(updatedAt) : undefined,
+            subtasks: subtasks?.map((s) => ({
                 ...this.toFirestore(s),
                 createdAt: Timestamp.fromDate(s.createdAt),
+                updatedAt: s.updatedAt
+                    ? Timestamp.fromDate(s.updatedAt)
+                    : Timestamp.fromDate(s.createdAt),
             })) as FirestoreTask[],
         };
+    },
+};
+
+// ============================================================================
+// Couple Service
+// ============================================================================
+
+export const coupleService = {
+    async create(couple: Omit<FirestoreCouple, 'createdAt'>): Promise<void> {
+        const coupleRef = doc(db, COLLECTIONS.couples, couple.id);
+        await setDoc(coupleRef, {
+            ...couple,
+            createdAt: serverTimestamp(),
+        });
+    },
+
+    async get(coupleId: string): Promise<FirestoreCouple | null> {
+        const coupleRef = doc(db, COLLECTIONS.couples, coupleId);
+        const snapshot = await getDoc(coupleRef);
+        return snapshot.exists() ? (snapshot.data() as FirestoreCouple) : null;
+    },
+
+    async update(coupleId: string, updates: Partial<FirestoreCouple>): Promise<void> {
+        const coupleRef = doc(db, COLLECTIONS.couples, coupleId);
+        await updateDoc(coupleRef, updates);
+    },
+
+    async setEncryptionKeyHash(coupleId: string, keyHash: string): Promise<void> {
+        await this.update(coupleId, { encryptionKeyHash: keyHash });
+    },
+
+    subscribe(coupleId: string, callback: (couple: FirestoreCouple | null) => void): Unsubscribe {
+        const coupleRef = doc(db, COLLECTIONS.couples, coupleId);
+        return onSnapshot(coupleRef, (snapshot) => {
+            callback(snapshot.exists() ? (snapshot.data() as FirestoreCouple) : null);
+        });
+    },
+
+    getCoupleId(userId1: string, userId2: string): string {
+        return [userId1, userId2].sort().join('_');
     },
 };
 
@@ -369,6 +542,96 @@ export const rewardService = {
             isRedeemed: firestoreReward.isRedeemed,
             redeemedAt: firestoreReward.redeemedAt?.toDate(),
         };
+    },
+};
+
+// ============================================================================
+// Message Service (Encrypted Messages)
+// ============================================================================
+
+export const messageService = {
+    async create(message: Omit<FirestoreMessage, 'createdAt'>): Promise<string> {
+        const messageRef = doc(collection(db, COLLECTIONS.messages));
+        const messageWithId = { ...message, id: messageRef.id };
+        await setDoc(messageRef, {
+            ...messageWithId,
+            createdAt: serverTimestamp(),
+        });
+        return messageRef.id;
+    },
+
+    async get(messageId: string): Promise<FirestoreMessage | null> {
+        const messageRef = doc(db, COLLECTIONS.messages, messageId);
+        const snapshot = await getDoc(messageRef);
+        return snapshot.exists() ? (snapshot.data() as FirestoreMessage) : null;
+    },
+
+    async markAsRead(messageId: string, userId: string): Promise<void> {
+        const messageRef = doc(db, COLLECTIONS.messages, messageId);
+        await updateDoc(messageRef, {
+            readAt: serverTimestamp(),
+            readBy: userId,
+        });
+    },
+
+    async getMessagesForCouple(
+        coupleId: string,
+        limit?: number
+    ): Promise<FirestoreMessage[]> {
+        let q = query(
+            collection(db, COLLECTIONS.messages),
+            where('coupleId', '==', coupleId)
+        );
+
+        const snapshot = await getDocs(q);
+        const messages = snapshot.docs.map((doc) => doc.data() as FirestoreMessage);
+
+        // Sort by createdAt descending
+        messages.sort((a, b) => {
+            const aTime = a.createdAt?.toMillis() || 0;
+            const bTime = b.createdAt?.toMillis() || 0;
+            return bTime - aTime;
+        });
+
+        return limit ? messages.slice(0, limit) : messages;
+    },
+
+    async getUnreadCount(coupleId: string, userId: string): Promise<number> {
+        const q = query(
+            collection(db, COLLECTIONS.messages),
+            where('coupleId', '==', coupleId),
+            where('senderId', '!=', userId)
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.filter((doc) => {
+            const data = doc.data() as FirestoreMessage;
+            return !data.readAt;
+        }).length;
+    },
+
+    subscribeToMessages(
+        coupleId: string,
+        callback: (messages: FirestoreMessage[]) => void
+    ): Unsubscribe {
+        const q = query(
+            collection(db, COLLECTIONS.messages),
+            where('coupleId', '==', coupleId)
+        );
+        return onSnapshot(q, (snapshot) => {
+            const messages = snapshot.docs.map((doc) => doc.data() as FirestoreMessage);
+            // Sort by createdAt ascending (oldest first)
+            messages.sort((a, b) => {
+                const aTime = a.createdAt?.toMillis() || 0;
+                const bTime = b.createdAt?.toMillis() || 0;
+                return aTime - bTime;
+            });
+            callback(messages);
+        });
+    },
+
+    async deleteMessage(messageId: string): Promise<void> {
+        const messageRef = doc(db, COLLECTIONS.messages, messageId);
+        await deleteDoc(messageRef);
     },
 };
 

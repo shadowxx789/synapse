@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -10,8 +10,10 @@ import {
     ScrollView,
     Platform,
     useWindowDimensions,
+    Modal,
+    TextInput,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeInUp, SlideInDown } from 'react-native-reanimated';
@@ -25,6 +27,7 @@ import { useTaskStore, Task } from '@/stores/taskStore';
 import { useEnergyStore } from '@/stores/energyStore';
 import { useAISettingsStore } from '@/stores/aiSettingsStore';
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
+import { shredTask } from '@/services/ai';
 
 const MAX_CONTENT_WIDTH = 480;
 
@@ -118,6 +121,7 @@ export default function ExecutorHomeScreen() {
         currentTask,
         currentSubtaskIndex,
         setTasks,
+        addTask,
         setCurrentTask,
         completeCurrentSubtask,
         nextSubtask,
@@ -138,18 +142,51 @@ export default function ExecutorHomeScreen() {
     const [completedCount, setCompletedCount] = useState(0);
     const [totalTimeSpent, setTotalTimeSpent] = useState(0);
     const [showAISettings, setShowAISettings] = useState(false);
+    const [showCreateTask, setShowCreateTask] = useState(false);
+    const [newTaskTitle, setNewTaskTitle] = useState('');
+    const [newTaskMinutes, setNewTaskMinutes] = useState(5);
 
     const { apiKey: aiApiKey } = useAISettingsStore();
 
-    // Load demo tasks on mount
-    useFocusEffect(
-        useCallback(() => {
+    const scaleSubtasksToTotal = (subtasks: Task[] | undefined, targetMinutes: number): Task[] | undefined => {
+        if (!subtasks || subtasks.length === 0) return subtasks;
+
+        const baseTotal = subtasks.reduce((sum, st) => sum + Number(st.visualTimerMinutes || 0), 0) || 1;
+        const scaledMinutes = subtasks.map((subtask) =>
+            Math.max(1, Math.round(Number(subtask.visualTimerMinutes || 0) * (targetMinutes / baseTotal)))
+        );
+
+        const currentTotal = scaledMinutes.reduce((sum, minutes) => sum + minutes, 0);
+        let diff = targetMinutes - currentTotal;
+
+        for (let i = scaledMinutes.length - 1; i >= 0 && diff !== 0; i -= 1) {
+            const nextValue = scaledMinutes[i] + diff;
+            if (nextValue >= 1) {
+                scaledMinutes[i] = nextValue;
+                diff = 0;
+            } else {
+                diff += scaledMinutes[i] - 1;
+                scaledMinutes[i] = 1;
+            }
+        }
+
+        return subtasks.map((subtask, index) => ({
+            ...subtask,
+            visualTimerMinutes: scaledMinutes[index],
+        }));
+    };
+
+    // Load demo tasks only on first mount (not on every focus)
+    const hasInitialized = useRef(false);
+    
+    useEffect(() => {
+        if (!hasInitialized.current) {
+            hasInitialized.current = true;
             if (tasks.length === 0) {
                 setTasks(DEMO_TASKS);
             }
-            return () => { };
-        }, [])
-    );
+        }
+    }, []);
 
     // Check if supporter needs recharge
     useEffect(() => {
@@ -165,13 +202,23 @@ export default function ExecutorHomeScreen() {
     const subtasks = currentTask?.subtasks || [];
     const currentSubtask = subtasks[currentSubtaskIndex];
 
+    // Calculate total remaining time (current subtask remaining + all upcoming subtasks)
+    const calculateTotalRemainingSeconds = (): number => {
+        if (!currentSubtask || !subtasks || subtasks.length === 0) return 0;
+
+        // Sum of current subtask's allocated time + all upcoming subtasks
+        const upcomingSubtasks = subtasks.slice(currentSubtaskIndex);
+        const totalMinutes = upcomingSubtasks.reduce((sum, st) => sum + Number(st.visualTimerMinutes || 0), 0);
+        return totalMinutes * 60;
+    };
+
     // Initialize timer when subtask changes
     useEffect(() => {
         if (currentSubtask && viewMode === 'execution') {
-            setRemainingSeconds(currentSubtask.visualTimerMinutes * 60);
+            setRemainingSeconds(calculateTotalRemainingSeconds());
             setIsPaused(false);
         }
-    }, [currentSubtask?.id, viewMode, currentSubtask?.visualTimerMinutes]);
+    }, [currentSubtask?.id, viewMode, subtasks, currentSubtaskIndex]);
 
     // Timer countdown
     useEffect(() => {
@@ -207,21 +254,20 @@ export default function ExecutorHomeScreen() {
         }
 
         // Update task with custom time and update all subtasks proportionally
-        const originalTotalTime = selectedTask.visualTimerMinutes;
-        const timeRatio = customMinutes / originalTotalTime;
+        const originalTotalTime = selectedTask.visualTimerMinutes || 1;
 
         const updatedTask: Task = {
             ...selectedTask,
             status: 'doing',
             visualTimerMinutes: customMinutes,
             // Update each subtask's time proportionally
-            subtasks: selectedTask.subtasks?.map((subtask) => ({
-                ...subtask,
-                visualTimerMinutes: Math.max(1, Math.round(subtask.visualTimerMinutes * timeRatio)),
-            })),
+            subtasks: scaleSubtasksToTotal(selectedTask.subtasks, customMinutes),
         };
 
         setCurrentTask(updatedTask);
+        // IMPORTANT: Set timer directly to user's requested time (bypass useEffect race condition)
+        setRemainingSeconds(customMinutes * 60);
+        setIsPaused(false);
         setAllComplete(false);
         setCompletedCount(0);
         setTotalTimeSpent(0);
@@ -319,6 +365,11 @@ export default function ExecutorHomeScreen() {
         if (Platform.OS !== 'web') {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         }
+        if (Platform.OS === 'web') {
+            removeTask(taskId);
+            return;
+        }
+
         Alert.alert(
             '删除任务',
             `确定要删除「${taskTitle}」吗？`,
@@ -332,13 +383,108 @@ export default function ExecutorHomeScreen() {
                     style: 'destructive',
                     onPress: () => {
                         removeTask(taskId);
-                        if (Platform.OS !== 'web') {
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        }
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     },
                 },
             ]
         );
+    };
+
+    const handleCreateTask = async () => {
+        if (!newTaskTitle.trim()) {
+            Alert.alert('提示', '请输入任务标题');
+            return;
+        }
+
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
+
+        try {
+            // Use AI to shred the task into subtasks
+            const shredResult = await shredTask(newTaskTitle);
+
+            const taskTimestamp = Date.now();
+            const taskId = `task-${taskTimestamp}`;
+            const newTask: Task = {
+                id: taskId,
+                title: newTaskTitle,
+                description: `执行者自己创建的任务`,
+                creatorId: 'executor-1',
+                executorId: 'executor-1',
+                visualTimerMinutes: newTaskMinutes,
+                status: 'pending',
+                createdAt: new Date(),
+                subtasks: shredResult.subtasks.map((s, i) => ({
+                    id: `subtask-${taskTimestamp}-${i}`,
+                    parentTaskId: taskId,
+                    title: s.title,
+                    creatorId: 'executor-1',
+                    executorId: 'executor-1',
+                    visualTimerMinutes: Math.max(1, Math.round(Number(s.estimatedMinutes) || 1)),
+                    status: 'pending' as const,
+                    createdAt: new Date(),
+                })),
+            };
+
+            addTask(newTask);
+            setShowCreateTask(false);
+            setNewTaskTitle('');
+            setNewTaskMinutes(5);
+
+            if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+
+            Alert.alert(
+                '✅ 任务已创建',
+                `「${newTaskTitle}」已添加到任务列表，共${shredResult.subtasks.length}个步骤`,
+                [{ text: '好的' }]
+            );
+        } catch (error) {
+            console.error('Create task failed:', error);
+            
+            // Fallback: create simple task without AI shredding
+            const taskTimestamp = Date.now();
+            const taskId = `task-${taskTimestamp}`;
+            const newTask: Task = {
+                id: taskId,
+                title: newTaskTitle,
+                description: `执行者自己创建的任务`,
+                creatorId: 'executor-1',
+                executorId: 'executor-1',
+                visualTimerMinutes: newTaskMinutes,
+                status: 'pending',
+                createdAt: new Date(),
+                subtasks: [
+                    {
+                        id: `subtask-${taskTimestamp}-0`,
+                        parentTaskId: taskId,
+                        title: newTaskTitle,
+                        creatorId: 'executor-1',
+                        executorId: 'executor-1',
+                        visualTimerMinutes: Math.max(1, Math.round(Number(newTaskMinutes) || 1)),
+                        status: 'pending' as const,
+                        createdAt: new Date(),
+                    },
+                ],
+            };
+
+            addTask(newTask);
+            setShowCreateTask(false);
+            setNewTaskTitle('');
+            setNewTaskMinutes(5);
+
+            if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+
+            Alert.alert(
+                '✅ 任务已创建',
+                `「${newTaskTitle}」已添加到任务列表（未使用AI拆解）`,
+                [{ text: '好的' }]
+            );
+        }
     };
 
     // Task List View
@@ -353,12 +499,20 @@ export default function ExecutorHomeScreen() {
                     <View style={[styles.content, { width: contentWidth }]}>
                         <View style={styles.listHeader}>
                             <Text style={styles.listTitle}>待办任务</Text>
-                            <TouchableOpacity
-                                style={[styles.settingsButton, !aiApiKey && styles.settingsButtonWarning]}
-                                onPress={() => setShowAISettings(true)}
-                            >
-                                <Text style={styles.settingsIcon}>⚙️</Text>
-                            </TouchableOpacity>
+                            <View style={styles.headerRight}>
+                                <TouchableOpacity
+                                    style={styles.createButton}
+                                    onPress={() => setShowCreateTask(true)}
+                                >
+                                    <Text style={styles.createButtonText}>➕</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.settingsButton, !aiApiKey && styles.settingsButtonWarning]}
+                                    onPress={() => setShowAISettings(true)}
+                                >
+                                    <Text style={styles.settingsIcon}>⚙️</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
 
                         {tasks.length === 0 ? (
@@ -428,6 +582,83 @@ export default function ExecutorHomeScreen() {
                     isVisible={showAISettings}
                     onClose={() => setShowAISettings(false)}
                 />
+
+                {/* Create Task Modal */}
+                <Modal
+                    visible={showCreateTask}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setShowCreateTask(false)}
+                >
+                    <View style={styles.modalOverlay}>
+                        <Animated.View
+                            entering={SlideInDown.springify()}
+                            style={styles.modalContainer}
+                        >
+                            <Text style={styles.modalTitle}>创建新任务</Text>
+                            <Text style={styles.modalSubtitle}>
+                                AI 会自动帮你拆解成小步骤
+                            </Text>
+
+                            <TextInput
+                                style={styles.modalInput}
+                                placeholder="输入任务名称，例如：整理书桌"
+                                placeholderTextColor={Colors.textMuted}
+                                value={newTaskTitle}
+                                onChangeText={setNewTaskTitle}
+                                autoFocus
+                                maxLength={100}
+                            />
+
+                            <View style={styles.modalTimeSection}>
+                                <Text style={styles.modalTimeLabel}>预计时长</Text>
+                                <View style={styles.modalTimeControls}>
+                                    <TouchableOpacity
+                                        style={styles.modalTimeButton}
+                                        onPress={() => setNewTaskMinutes(Math.max(1, newTaskMinutes - 1))}
+                                    >
+                                        <Text style={styles.modalTimeButtonText}>-</Text>
+                                    </TouchableOpacity>
+                                    <Text style={styles.modalTimeValue}>{newTaskMinutes}分钟</Text>
+                                    <TouchableOpacity
+                                        style={styles.modalTimeButton}
+                                        onPress={() => setNewTaskMinutes(Math.min(60, newTaskMinutes + 1))}
+                                    >
+                                        <Text style={styles.modalTimeButtonText}>+</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+
+                            <View style={styles.modalActions}>
+                                <TouchableOpacity
+                                    style={styles.modalCancelButton}
+                                    onPress={() => {
+                                        setShowCreateTask(false);
+                                        setNewTaskTitle('');
+                                        setNewTaskMinutes(5);
+                                    }}
+                                >
+                                    <Text style={styles.modalCancelText}>取消</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.modalCreateButton,
+                                        !newTaskTitle.trim() && styles.modalCreateButtonDisabled,
+                                    ]}
+                                    onPress={handleCreateTask}
+                                    disabled={!newTaskTitle.trim()}
+                                >
+                                    <LinearGradient
+                                        colors={[Colors.primary, '#FF8C61']}
+                                        style={styles.modalCreateGradient}
+                                    >
+                                        <Text style={styles.modalCreateText}>✨ 创建</Text>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            </View>
+                        </Animated.View>
+                    </View>
+                </Modal>
             </SafeAreaView>
         );
     }
@@ -627,7 +858,7 @@ export default function ExecutorHomeScreen() {
                 {/* Visual Timer */}
                 <View style={styles.timerSection}>
                     <VisualTimer
-                        totalMinutes={currentSubtask.visualTimerMinutes}
+                        totalMinutes={currentTask.visualTimerMinutes}
                         remainingSeconds={remainingSeconds}
                         onTimeUp={() => {
                             if (Platform.OS !== 'web') {
@@ -1144,5 +1375,119 @@ const styles = StyleSheet.create({
         color: '#FFF',
         fontSize: FontSizes.lg,
         fontWeight: '700',
+    },
+    // Create Task Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.85)',
+        justifyContent: 'flex-end',
+    },
+    modalContainer: {
+        backgroundColor: Colors.surface,
+        borderTopLeftRadius: BorderRadius.xl,
+        borderTopRightRadius: BorderRadius.xl,
+        padding: Spacing.lg,
+        paddingBottom: Spacing.xxl,
+    },
+    modalTitle: {
+        fontSize: FontSizes.xl,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+        textAlign: 'center',
+        marginBottom: Spacing.xs,
+    },
+    modalSubtitle: {
+        fontSize: FontSizes.sm,
+        color: Colors.textSecondary,
+        textAlign: 'center',
+        marginBottom: Spacing.lg,
+    },
+    modalInput: {
+        backgroundColor: Colors.surfaceElevated,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        color: Colors.textPrimary,
+        fontSize: FontSizes.md,
+        marginBottom: Spacing.md,
+    },
+    modalTimeSection: {
+        marginBottom: Spacing.lg,
+    },
+    modalTimeLabel: {
+        fontSize: FontSizes.sm,
+        color: Colors.textSecondary,
+        marginBottom: Spacing.sm,
+    },
+    modalTimeControls: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.md,
+    },
+    modalTimeButton: {
+        width: 40,
+        height: 40,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.surfaceElevated,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalTimeButtonText: {
+        fontSize: FontSizes.lg,
+        color: Colors.textPrimary,
+        fontWeight: '700',
+    },
+    modalTimeValue: {
+        fontSize: FontSizes.lg,
+        fontWeight: '700',
+        color: Colors.primary,
+        minWidth: 80,
+        textAlign: 'center',
+    },
+    modalActions: {
+        flexDirection: 'row',
+        gap: Spacing.md,
+    },
+    modalCancelButton: {
+        flex: 1,
+        paddingVertical: Spacing.md,
+        alignItems: 'center',
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.surfaceElevated,
+    },
+    modalCancelText: {
+        color: Colors.textMuted,
+        fontSize: FontSizes.md,
+        fontWeight: '600',
+    },
+    modalCreateButton: {
+        flex: 2,
+        borderRadius: BorderRadius.md,
+        overflow: 'hidden',
+    },
+    modalCreateButtonDisabled: {
+        opacity: 0.5,
+    },
+    modalCreateGradient: {
+        paddingVertical: Spacing.md,
+        alignItems: 'center',
+    },
+    modalCreateText: {
+        color: '#FFF',
+        fontSize: FontSizes.md,
+        fontWeight: '700',
+    },
+    createButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: Colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: Spacing.sm,
+    },
+    createButtonText: {
+        fontSize: FontSizes.md,
+        color: '#FFF',
     },
 });
