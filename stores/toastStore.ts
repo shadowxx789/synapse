@@ -2,7 +2,9 @@
  * Toast Store - Global toast notification state management
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 // ============================================================================
 // Types
@@ -40,58 +42,69 @@ interface ToastState {
 
 let toastIdCounter = 0;
 
-export const useToastStore = create<ToastState>((set, get) => ({
-    toasts: [],
+export const useToastStore = create<ToastState>()(
+    persist(
+        (set, get) => ({
+            toasts: [],
 
-    show: (toast) => {
-        const id = `toast_${++toastIdCounter}_${Date.now()}`;
-        const newToast: Toast = {
-            ...toast,
-            id,
-            duration: toast.duration ?? 3000,
-        };
+            show: (toast) => {
+                const id = `toast_${++toastIdCounter}_${Date.now()}`;
+                const newToast: Toast = {
+                    ...toast,
+                    id,
+                    duration: toast.duration ?? 3000,
+                };
 
-        set((state) => ({
-            toasts: [...state.toasts, newToast],
-        }));
+                set((state) => ({
+                    toasts: [...state.toasts, newToast],
+                }));
 
-        // Auto-hide after duration
-        if (newToast.duration && newToast.duration > 0) {
-            setTimeout(() => {
-                get().hide(id);
-            }, newToast.duration);
+                // Auto-hide after duration
+                if (newToast.duration && newToast.duration > 0) {
+                    setTimeout(() => {
+                        get().hide(id);
+                    }, newToast.duration);
+                }
+
+                return id;
+            },
+
+            hide: (id) => {
+                set((state) => ({
+                    toasts: state.toasts.filter((t) => t.id !== id),
+                }));
+            },
+
+            hideAll: () => {
+                set({ toasts: [] });
+            },
+
+            // Convenience methods
+            success: (message, duration) => {
+                return get().show({ type: 'success', message, duration });
+            },
+
+            error: (message, duration = 4000) => {
+                return get().show({ type: 'error', message, duration });
+            },
+
+            warning: (message, duration) => {
+                return get().show({ type: 'warning', message, duration });
+            },
+
+            info: (message, duration) => {
+                return get().show({ type: 'info', message, duration });
+            },
+        }),
+        {
+            name: 'synapse-toast-storage',
+            storage: createJSONStorage(() => AsyncStorage),
+            partialize: (state) => ({
+                toasts: state.toasts,
+            }),
         }
-
-        return id;
-    },
-
-    hide: (id) => {
-        set((state) => ({
-            toasts: state.toasts.filter((t) => t.id !== id),
-        }));
-    },
-
-    hideAll: () => {
-        set({ toasts: [] });
-    },
-
-    // Convenience methods
-    success: (message, duration) => {
-        return get().show({ type: 'success', message, duration });
-    },
-
-    error: (message, duration = 4000) => {
-        return get().show({ type: 'error', message, duration });
-    },
-
-    warning: (message, duration) => {
-        return get().show({ type: 'warning', message, duration });
-    },
-
-    info: (message, duration) => {
-        return get().show({ type: 'info', message, duration });
-    },
-}));
+    )
+);
 
 // ============================================================================
 // Helper Hook
