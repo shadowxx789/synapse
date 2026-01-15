@@ -80,7 +80,7 @@ Synapse 的设计不仅仅是关于“任务管理”，而是基于神经多样
 *   **Routing**: [Expo Router](https://docs.expo.dev/router/introduction/) (v3)
 *   **Language**: [TypeScript](https://www.typescriptlang.org/)
 *   **State Management**: [Zustand](https://github.com/pmndrs/zustand) + Persistence
-*   **Backend / Realtime**: [Firebase](https://firebase.google.com/) (Firestore, Auth)
+*   **Backend / Realtime**: [Supabase](https://supabase.com/) (Postgres, Auth, Realtime)
 *   **Styling**: Custom Design System (Warm Orange / Calming Teal)
 *   **Animations**: [React Native Reanimated](https://docs.swmansion.com/react-native-reanimated/)
 
@@ -91,7 +91,7 @@ Synapse 的设计不仅仅是关于“任务管理”，而是基于神经多样
 ### 前置要求
 *   Node.js (LTS)
 *   npm 或 yarn
-*   Firebase 项目 (用于后端同步)
+*   Supabase 项目 (用于后端同步)
 *   OpenAI API Key (可选，用于 AI 任务拆解)
 
 ### 安装步骤
@@ -112,7 +112,7 @@ Synapse 的设计不仅仅是关于“任务管理”，而是基于神经多样
     ```bash
     cp .env.example .env
     ```
-    *在 `.env` 中填入 Firebase 配置和 OpenAI Key。*
+    *在 `.env` 中填入 Supabase 配置和 OpenAI Key。*
 
 4.  **运行项目**
     ```bash

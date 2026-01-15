@@ -102,6 +102,12 @@ function uint8ArrayToHex(bytes: Uint8Array): string {
         .join('');
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+}
+
 // ============================================================================
 // Crypto Service
 // ============================================================================
@@ -127,14 +133,14 @@ export const cryptoService = {
     },
 
     /**
-     * Hash the secret using SHA-256 (for storage verification in Firestore)
-     * We don't store the actual secret in Firestore, only its hash
+     * Hash the secret using SHA-256 (for storage verification in database)
+     * We don't store the actual secret in database, only its hash
      */
     async hashSecret(secret: string): Promise<string> {
         const secretBytes = hexToUint8Array(secret);
 
         if (typeof crypto !== 'undefined' && crypto.subtle) {
-            const hashBuffer = await crypto.subtle.digest('SHA-256', secretBytes);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', toArrayBuffer(secretBytes));
             return uint8ArrayToHex(new Uint8Array(hashBuffer));
         }
 
@@ -156,7 +162,7 @@ export const cryptoService = {
 
         return crypto.subtle.importKey(
             'raw',
-            keyBytes,
+            toArrayBuffer(keyBytes),
             { name: 'AES-GCM', length: 256 },
             false,
             ['encrypt', 'decrypt']
@@ -182,15 +188,17 @@ export const cryptoService = {
             // Generate random 96-bit IV (12 bytes)
             const iv = new Uint8Array(12);
             crypto.getRandomValues(iv);
+            const ivBuffer = toArrayBuffer(iv);
 
             // Convert content to bytes
             const contentBytes = stringToUint8Array(JSON.stringify(content));
+            const contentBuffer = toArrayBuffer(contentBytes);
 
             // Encrypt
             const ciphertext = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv },
+                { name: 'AES-GCM', iv: ivBuffer },
                 key,
-                contentBytes
+                contentBuffer
             );
 
             return {
@@ -221,12 +229,14 @@ export const cryptoService = {
 
             const ciphertextBytes = base64ToUint8Array(encryptedContent);
             const ivBytes = base64ToUint8Array(iv);
+            const ciphertextBuffer = toArrayBuffer(ciphertextBytes);
+            const ivBuffer = toArrayBuffer(ivBytes);
 
             // Decrypt
             const plaintextBuffer = await crypto.subtle.decrypt(
-                { name: 'AES-GCM', iv: ivBytes },
+                { name: 'AES-GCM', iv: ivBuffer },
                 key,
-                ciphertextBytes
+                ciphertextBuffer
             );
 
             const plaintextString = uint8ArrayToString(new Uint8Array(plaintextBuffer));

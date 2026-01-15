@@ -20,7 +20,7 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 import { AUTH_DISABLED } from '@/constants/FeatureFlags';
-import { authService, AuthError } from '@/services/authService';
+import { authService, AuthError } from '@/services/backend';
 import { useUserStore } from '@/stores/userStore';
 
 const MAX_CONTENT_WIDTH = 480;
@@ -90,7 +90,7 @@ export default function LoginScreen() {
             // Navigate based on user state
             if (!user.role) {
                 // User hasn't selected role yet
-                router.replace('/(auth)/');
+                router.replace('/(auth)');
             } else if (!user.partnerId) {
                 // User has role but not paired
                 router.replace('/(auth)/pair');

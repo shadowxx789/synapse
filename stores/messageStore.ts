@@ -2,7 +2,7 @@
  * Message Store - Zustand store for managing encrypted messages with offline support
  *
  * Features:
- * - Real-time message sync with Firestore
+ * - Real-time message sync with Supabase
  * - Automatic encryption/decryption
  * - Offline message caching
  * - Pending message queue for offline sends
@@ -13,7 +13,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { encryptedMessageService, DecryptedMessage } from '@/services/messageService';
-import { Unsubscribe } from '@/services/firebase';
+import { Unsubscribe } from '@/services/backend';
 import { DecryptedMessageContent, MessageType } from '@/services/cryptoService';
 
 // ============================================================================

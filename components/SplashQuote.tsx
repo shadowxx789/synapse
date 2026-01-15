@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform, Animated as RNAnimated } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Colors, FontSizes, Spacing } from '@/constants/Colors';
 
@@ -78,13 +78,54 @@ export default function SplashQuote({ onComplete, duration = 3000 }: SplashQuote
         return ADHD_QUOTES[randomIndex];
     });
 
+    // For web: use React Native's built-in Animated for more reliable behavior
+    const [webOpacity] = useState(() => new RNAnimated.Value(0));
+
     useEffect(() => {
+        // Fade in animation for web
+        if (Platform.OS === 'web') {
+            RNAnimated.timing(webOpacity, {
+                toValue: 1,
+                duration: 600,
+                useNativeDriver: true,
+            }).start();
+        }
+
         const timer = setTimeout(() => {
-            onComplete();
-        }, duration);
+            if (Platform.OS === 'web') {
+                // Fade out before completing
+                RNAnimated.timing(webOpacity, {
+                    toValue: 0,
+                    duration: 400,
+                    useNativeDriver: true,
+                }).start(() => onComplete());
+            } else {
+                onComplete();
+            }
+        }, duration - 400); // Subtract fade-out time
 
         return () => clearTimeout(timer);
-    }, [duration, onComplete]);
+    }, [duration, onComplete, webOpacity]);
+
+    const content = (
+        <View style={styles.content}>
+            <Text style={styles.logo}>✨</Text>
+            <Text style={styles.appName}>Synapse</Text>
+            <View style={styles.quoteContainer}>
+                <Text style={styles.quoteText}>{quote.text}</Text>
+                <Text style={styles.quoteAuthor}>{quote.author}</Text>
+            </View>
+        </View>
+    );
+
+    // Use different animation approach for web vs native
+    if (Platform.OS === 'web') {
+        return (
+            <RNAnimated.View style={[styles.container, { opacity: webOpacity }]}>
+                {content}
+            </RNAnimated.View>
+        );
+    }
 
     return (
         <Animated.View
@@ -92,14 +133,7 @@ export default function SplashQuote({ onComplete, duration = 3000 }: SplashQuote
             entering={FadeIn.duration(600)}
             exiting={FadeOut.duration(600)}
         >
-            <View style={styles.content}>
-                <Text style={styles.logo}>✨</Text>
-                <Text style={styles.appName}>Synapse</Text>
-                <View style={styles.quoteContainer}>
-                    <Text style={styles.quoteText}>{quote.text}</Text>
-                    <Text style={styles.quoteAuthor}>{quote.author}</Text>
-                </View>
-            </View>
+            {content}
         </Animated.View>
     );
 }

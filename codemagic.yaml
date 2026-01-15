@@ -13,10 +13,10 @@ workflows:
       groups:
         # Add these environment variable groups in Codemagic UI:
         # - expo_credentials (EXPO_TOKEN)
-        # - firebase_config (all EXPO_PUBLIC_FIREBASE_* vars)
+        # - supabase_config (EXPO_PUBLIC_SUPABASE_* vars)
         # - openai_config (EXPO_PUBLIC_OPENAI_API_KEY)
         - expo_credentials
-        - firebase_config
+        - supabase_config
         - openai_config
       vars:
         EXPO_SDK_VERSION: "54.0.31"
@@ -45,8 +45,8 @@ workflows:
       - name: Verify environment variables
         script: |
           echo "Checking required environment variables..."
-          if [ -z "$EXPO_PUBLIC_FIREBASE_API_KEY" ]; then
-            echo "Warning: Firebase API key not set"
+          if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ]; then
+            echo "Warning: Supabase URL not set"
           fi
           if [ -z "$EXPO_PUBLIC_OPENAI_API_KEY" ]; then
             echo "Warning: OpenAI API key not set"
@@ -89,7 +89,7 @@ workflows:
     environment:
       groups:
         - expo_credentials
-        - firebase_config
+        - supabase_config
         - openai_config
         - ios_credentials
       vars:
@@ -122,8 +122,8 @@ workflows:
       - name: Verify environment variables
         script: |
           echo "Checking required environment variables..."
-          if [ -z "$EXPO_PUBLIC_FIREBASE_API_KEY" ]; then
-            echo "Warning: Firebase API key not set"
+          if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ]; then
+            echo "Warning: Supabase URL not set"
           fi
       - name: Prebuild iOS native code
         script: |
@@ -161,7 +161,7 @@ workflows:
     instance_type: linux_x2
     environment:
       groups:
-        - firebase_config
+        - supabase_config
         - openai_config
       vars:
         NODE_VERSION: "20"
@@ -237,7 +237,7 @@ workflows:
     environment:
       groups:
         - expo_credentials
-        - firebase_config
+        - supabase_config
         - openai_config
       vars:
         NODE_VERSION: "20"

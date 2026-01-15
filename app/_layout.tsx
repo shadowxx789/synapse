@@ -12,7 +12,7 @@ import { Colors } from '@/constants/Colors';
 import { AUTH_DISABLED } from '@/constants/FeatureFlags';
 import SplashQuote from '@/components/SplashQuote';
 import { SimpleToastContainer } from '@/components/Toast';
-import { authService } from '@/services/authService';
+import { authService } from '@/services/backend';
 
 export {
   ErrorBoundary,
@@ -47,7 +47,7 @@ export default function RootLayout() {
   const { isAuthenticated, user, setUser } = useUserStore();
   const router = useRouter();
   const segments = useSegments();
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(false); // DEBUG: disabled splash
   const [isAuthChecked, setIsAuthChecked] = useState(false);
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  // Listen to Firebase auth state changes
+  // Listen to Supabase auth state changes
   useEffect(() => {
     if (AUTH_DISABLED) {
       setIsAuthChecked(true);
@@ -108,10 +108,8 @@ export default function RootLayout() {
     // User is authenticated
     if (!user?.role) {
       // No role selected - go to role selection
-      if (inAuthGroup && segments[1] !== 'index') {
-        router.replace('/(auth)/');
-      } else if (!inAuthGroup) {
-        router.replace('/(auth)/');
+      if (!inAuthGroup || segments[1]) {
+        router.replace('/(auth)');
       }
       return;
     }

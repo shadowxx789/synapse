@@ -21,7 +21,7 @@ import Animated, { FadeInDown, FadeInUp, FadeIn } from 'react-native-reanimated'
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 import { useUserStore } from '@/stores/userStore';
-import { userService } from '@/services/firebase';
+import { userService } from '@/services/backend';
 
 const MAX_CONTENT_WIDTH = 480;
 const PAIRING_CODE_LENGTH = 6;
@@ -320,7 +320,9 @@ export default function PairScreen() {
                                 {inputCode.map((char, index) => (
                                     <TextInput
                                         key={index}
-                                        ref={(ref) => (inputRefs.current[index] = ref)}
+                                        ref={(ref) => {
+                                            inputRefs.current[index] = ref;
+                                        }}
                                         style={[
                                             styles.codeInput,
                                             char && styles.codeInputFilled,

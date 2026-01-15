@@ -61,12 +61,12 @@ const ERROR_MESSAGES: Record<string, string> = {
     'auth/requires-recent-login': '请重新登录后再试',
     'auth/session-expired': '登录已过期，请重新登录',
 
-    // Firestore errors
-    'firestore/permission-denied': '没有权限执行此操作',
-    'firestore/not-found': '请求的数据不存在',
-    'firestore/already-exists': '数据已存在',
-    'firestore/resource-exhausted': '请求过于频繁，请稍后再试',
-    'firestore/unavailable': '服务暂时不可用，请稍后再试',
+    // Supabase/PostgreSQL errors
+    'PGRST301': '没有权限执行此操作',
+    'PGRST116': '请求的数据不存在',
+    '23505': '数据已存在',
+    '23503': '关联数据不存在',
+    '42501': '权限不足',
 
     // Pairing errors
     'pairing/invalid-code': '配对码无效或已过期',
@@ -118,8 +118,6 @@ export const isRetryableError = (error: unknown): boolean => {
 
     const errorCode = getErrorCode(error);
     const retryableCodes = [
-        'firestore/unavailable',
-        'firestore/resource-exhausted',
         'auth/too-many-requests',
         'network/timeout',
         'network/failed',
@@ -165,7 +163,7 @@ export const getErrorMessage = (error: unknown): string => {
     if (prefixMessage) {
         // Return generic message for that category
         if (prefix === 'auth') return '认证失败，请重试';
-        if (prefix === 'firestore') return '数据操作失败，请重试';
+        if (prefix === 'PGRST') return '数据操作失败，请重试';
         if (prefix === 'network') return '网络错误，请检查连接';
     }
 

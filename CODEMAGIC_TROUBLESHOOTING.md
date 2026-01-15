@@ -31,9 +31,9 @@ BUILD SUCCESSFUL in Xs Ys
 
 **错误 1: 环境变量未设置**
 ```
-Error: EXPO_PUBLIC_FIREBASE_API_KEY is not defined
+Error: EXPO_PUBLIC_SUPABASE_URL is not defined
 ```
-**解决**: 在 Codemagic → Environment variables 中添加 `firebase_config` 组
+**解决**: 在 Codemagic → Environment variables 中添加 `supabase_config` 组
 
 **错误 2: Gradle 构建失败**
 ```
@@ -108,13 +108,9 @@ find . -name "*.apk"
 
 在 Codemagic UI 中验证：
 
-**firebase_config** 组必须包含：
-- ✅ EXPO_PUBLIC_FIREBASE_API_KEY
-- ✅ EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN
-- ✅ EXPO_PUBLIC_FIREBASE_PROJECT_ID
-- ✅ EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET
-- ✅ EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-- ✅ EXPO_PUBLIC_FIREBASE_APP_ID
+**supabase_config** 组必须包含：
+- ✅ EXPO_PUBLIC_SUPABASE_URL
+- ✅ EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
 **openai_config** 组必须包含：
 - ✅ EXPO_PUBLIC_OPENAI_API_KEY
@@ -279,7 +275,7 @@ cd android && ./gradlew assembleRelease
 ## ✅ 成功构建检查表
 
 - [ ] `codemagic.yaml` 已更新（移除 `cd synapse-app`）
-- [ ] 环境变量组已配置（firebase_config, openai_config）
+- [ ] 环境变量组已配置（supabase_config, openai_config）
 - [ ] `app.json` 包含 android.package
 - [ ] 本地可以成功 prebuild
 - [ ] 推送代码到 GitHub

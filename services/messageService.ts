@@ -1,22 +1,58 @@
 /**
  * Message Service - High-level API for sending and receiving encrypted messages
  *
- * This service wraps the low-level Firebase messageService and cryptoService
+ * This service wraps the backend messageService and cryptoService
  * to provide a simple interface for sending/receiving encrypted messages.
  */
 
-import {
-    messageService as firebaseMessageService,
-    FirestoreMessage,
-    MessageType,
-    Unsubscribe,
-} from './firebase';
-import { cryptoService, DecryptedMessageContent } from './cryptoService';
-import { withRetryAndTimeout, getErrorMessage, isRetryableError } from './errorService';
+import { messageService as baseMessageService, MessageType, Unsubscribe } from '@/services/backend';
+import { cryptoService, DecryptedMessageContent } from '@/services/cryptoService';
+import { withRetryAndTimeout, isRetryableError } from '@/services/errorService';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+interface MessageMetadata {
+    messageType: MessageType;
+    hasAttachment: boolean;
+}
+
+interface TimestampLike {
+    toDate: () => Date;
+}
+
+interface BackendMessage {
+    id: string;
+    coupleId?: string;
+    couple_id?: string;
+    senderId?: string;
+    sender_id?: string;
+    type: MessageType | string;
+    encryptedContent?: string;
+    encrypted_content?: string;
+    iv: string;
+    metadata?: MessageMetadata | null;
+    createdAt?: string | TimestampLike;
+    created_at?: string;
+    readAt?: string | TimestampLike | null;
+    read_at?: string | null;
+    readBy?: string | null;
+    read_by?: string | null;
+}
+
+interface NormalizedMessage {
+    id: string;
+    coupleId: string;
+    senderId: string;
+    type: MessageType;
+    encryptedContent: string;
+    iv: string;
+    metadata?: MessageMetadata | null;
+    createdAt: Date;
+    readAt?: Date;
+    readBy?: string;
+}
 
 export interface DecryptedMessage {
     id: string;
@@ -36,6 +72,58 @@ export interface SendMessageParams {
     coupleSecret: string;
 }
 
+interface BackendMessageService {
+    create: (message: {
+        id: string;
+        coupleId: string;
+        senderId: string;
+        type: MessageType;
+        encryptedContent: string;
+        iv: string;
+        metadata?: MessageMetadata;
+    }) => Promise<string>;
+    getMessagesForCouple: (coupleId: string, limit?: number) => Promise<BackendMessage[]>;
+    subscribeToMessages: (coupleId: string, callback: (messages: BackendMessage[]) => void) => Unsubscribe;
+    markAsRead: (messageId: string, userId: string) => Promise<void>;
+    getUnreadCount: (coupleId: string, userId: string) => Promise<number>;
+    deleteMessage: (messageId: string) => Promise<void>;
+}
+
+const backendMessageService = baseMessageService as BackendMessageService;
+
+const isTimestampLike = (value: unknown): value is TimestampLike => {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as { toDate?: unknown };
+    return typeof candidate.toDate === 'function';
+};
+
+const toDate = (value: string | TimestampLike | null | undefined): Date => {
+    if (!value) return new Date();
+    if (typeof value === 'string') return new Date(value);
+    if (isTimestampLike(value)) return value.toDate();
+    return new Date();
+};
+
+const normalizeMessage = (message: BackendMessage): NormalizedMessage => {
+    const createdAtRaw = message.createdAt ?? message.created_at;
+    const readAtRaw = message.readAt ?? message.read_at;
+
+    const messageType = message.type as MessageType;
+
+    return {
+        id: message.id,
+        coupleId: message.coupleId ?? message.couple_id ?? '',
+        senderId: message.senderId ?? message.sender_id ?? '',
+        type: messageType,
+        encryptedContent: message.encryptedContent ?? message.encrypted_content ?? '',
+        iv: message.iv,
+        metadata: message.metadata ?? null,
+        createdAt: toDate(createdAtRaw),
+        readAt: readAtRaw ? toDate(readAtRaw) : undefined,
+        readBy: message.readBy ?? message.read_by ?? undefined,
+    };
+};
+
 // ============================================================================
 // Message Service (High-level API)
 // ============================================================================
@@ -54,9 +142,9 @@ export const encryptedMessageService = {
                 coupleSecret
             );
 
-            // Create the Firestore message
-            const messageId = await firebaseMessageService.create({
-                id: '', // Will be set by Firestore
+            // Create the message
+            const messageId = await backendMessageService.create({
+                id: '',
                 coupleId,
                 senderId,
                 type: content.type,
@@ -197,24 +285,25 @@ export const encryptedMessageService = {
      * Decrypt a single message
      */
     async decryptMessage(
-        message: FirestoreMessage,
+        message: BackendMessage,
         coupleSecret: string
     ): Promise<DecryptedMessage> {
+        const normalized = normalizeMessage(message);
         const content = await cryptoService.decrypt(
-            message.encryptedContent,
-            message.iv,
+            normalized.encryptedContent,
+            normalized.iv,
             coupleSecret
         );
 
         return {
-            id: message.id,
-            coupleId: message.coupleId,
-            senderId: message.senderId,
-            type: message.type,
+            id: normalized.id,
+            coupleId: normalized.coupleId,
+            senderId: normalized.senderId,
+            type: normalized.type,
             content,
-            createdAt: message.createdAt?.toDate() || new Date(),
-            readAt: message.readAt?.toDate(),
-            readBy: message.readBy,
+            createdAt: normalized.createdAt,
+            readAt: normalized.readAt,
+            readBy: normalized.readBy,
         };
     },
 
@@ -222,7 +311,7 @@ export const encryptedMessageService = {
      * Decrypt multiple messages
      */
     async decryptMessages(
-        messages: FirestoreMessage[],
+        messages: BackendMessage[],
         coupleSecret: string
     ): Promise<DecryptedMessage[]> {
         const decrypted = await Promise.all(
@@ -240,11 +329,11 @@ export const encryptedMessageService = {
         limit?: number
     ): Promise<DecryptedMessage[]> {
         return withRetryAndTimeout(async () => {
-            const messages = await firebaseMessageService.getMessagesForCouple(
+            const messages = await backendMessageService.getMessagesForCouple(
                 coupleId,
                 limit
             );
-            return this.decryptMessages(messages, coupleSecret);
+            return this.decryptMessages(messages as BackendMessage[], coupleSecret);
         }, 10000, {
             maxRetries: 2,
             initialDelayMs: 500,
@@ -261,9 +350,9 @@ export const encryptedMessageService = {
         callback: (messages: DecryptedMessage[]) => void,
         onError?: (error: Error) => void
     ): Unsubscribe {
-        return firebaseMessageService.subscribeToMessages(
+        return backendMessageService.subscribeToMessages(
             coupleId,
-            async (messages) => {
+            async (messages: BackendMessage[]) => {
                 try {
                     const decrypted = await this.decryptMessages(messages, coupleSecret);
                     callback(decrypted);
@@ -280,7 +369,7 @@ export const encryptedMessageService = {
      */
     async markAsRead(messageId: string, userId: string): Promise<void> {
         return withRetryAndTimeout(async () => {
-            await firebaseMessageService.markAsRead(messageId, userId);
+            await backendMessageService.markAsRead(messageId, userId);
         }, 8000, {
             maxRetries: 2,
             initialDelayMs: 500,
@@ -293,7 +382,7 @@ export const encryptedMessageService = {
      */
     async getUnreadCount(coupleId: string, userId: string): Promise<number> {
         return withRetryAndTimeout(async () => {
-            return firebaseMessageService.getUnreadCount(coupleId, userId);
+            return backendMessageService.getUnreadCount(coupleId, userId);
         }, 5000, {
             maxRetries: 2,
             initialDelayMs: 500,
@@ -306,7 +395,7 @@ export const encryptedMessageService = {
      */
     async deleteMessage(messageId: string): Promise<void> {
         return withRetryAndTimeout(async () => {
-            await firebaseMessageService.deleteMessage(messageId);
+            await backendMessageService.deleteMessage(messageId);
         }, 5000, {
             maxRetries: 2,
             initialDelayMs: 500,
