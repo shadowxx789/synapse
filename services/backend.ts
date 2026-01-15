@@ -1,5 +1,6 @@
 import { UserRole } from '@/stores/userStore';
 import { supabaseAuthService } from '@/services/supabaseAuthService';
+import { isSupabaseConfigured } from '@/services/supabase';
 import {
     coupleService as supabaseCoupleService,
     energyService as supabaseEnergyService,
@@ -84,4 +85,4 @@ export const coupleService = supabaseCoupleService;
 export const energyService = supabaseEnergyService;
 export const rewardService = supabaseRewardService;
 export const messageService = supabaseMessageAdapter;
-export const isSupabaseEnabled = true;
+export const isSupabaseEnabled = isSupabaseConfigured;

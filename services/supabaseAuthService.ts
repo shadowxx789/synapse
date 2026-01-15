@@ -1,6 +1,6 @@
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
-import { supabase } from '@/services/supabase';
+import { isSupabaseConfigured, supabase } from '@/services/supabase';
 import { UserRole } from '@/stores/userStore';
 import { getErrorMessage, isRetryableError, withRetry } from '@/services/errorService';
 
@@ -39,8 +39,15 @@ const mapProfileToAuthUser = (profile: ProfileRow): AuthUser => ({
     coupleId: profile.couple_id ?? undefined,
 });
 
+const ensureSupabaseConfigured = () => {
+    if (!isSupabaseConfigured) {
+        throw new Error('请先配置 Supabase');
+    }
+};
+
 export const supabaseAuthService = {
     async register(email: string, password: string, name: string): Promise<AuthUser> {
+        ensureSupabaseConfigured();
         return withRetry(async () => {
             try {
                 const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
@@ -87,6 +94,7 @@ export const supabaseAuthService = {
     },
 
     async login(email: string, password: string): Promise<AuthUser> {
+        ensureSupabaseConfigured();
         return withRetry(async () => {
             try {
                 const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
@@ -129,6 +137,7 @@ export const supabaseAuthService = {
     },
 
     async logout(): Promise<void> {
+        ensureSupabaseConfigured();
         return withRetry(async () => {
             const { error } = await supabase.auth.signOut();
             if (error) {
@@ -146,6 +155,7 @@ export const supabaseAuthService = {
     },
 
     async getCurrentUserProfile(): Promise<AuthUser | null> {
+        if (!isSupabaseConfigured) return null;
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData.session?.user;
         if (!user) return null;
@@ -167,6 +177,10 @@ export const supabaseAuthService = {
     },
 
     onAuthStateChanged(callback: (user: AuthUser | null) => void) {
+        if (!isSupabaseConfigured) {
+            callback(null);
+            return () => {};
+        }
         const { data: listener } = supabase.auth.onAuthStateChange(
             async (_event: AuthChangeEvent, session: Session | null) => {
                 const supaUser = session?.user;
@@ -209,6 +223,7 @@ export const supabaseAuthService = {
     },
 
     async sendPasswordReset(email: string): Promise<void> {
+        ensureSupabaseConfigured();
         return withRetry(async () => {
             const { error } = await supabase.auth.resetPasswordForEmail(email);
             if (error) {
@@ -222,6 +237,7 @@ export const supabaseAuthService = {
     },
 
     async updateRole(userId: string, role: UserRole): Promise<void> {
+        ensureSupabaseConfigured();
         return withRetry(async () => {
             const { error } = await supabase
                 .from('profiles')
@@ -239,6 +255,7 @@ export const supabaseAuthService = {
     },
 
     async isEmailRegistered(email: string): Promise<boolean> {
+        if (!isSupabaseConfigured) return false;
         const { data, error } = await supabase
             .from('profiles')
             .select('id')

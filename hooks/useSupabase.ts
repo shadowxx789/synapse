@@ -10,6 +10,7 @@ import {
     taskService,
     userService,
 } from '@/services/supabaseDatabase';
+import { isSupabaseConfigured } from '@/services/supabase';
 import { ActionType } from '@/stores/energyStore';
 import { Reward } from '@/stores/rewardStore';
 import { Task } from '@/stores/taskStore';
@@ -42,6 +43,12 @@ export function useSupabaseUser(userId: string | null) {
     const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
+        if (!isSupabaseConfigured) {
+            setUser(null);
+            setLoading(false);
+            return;
+        }
+
         if (!userId) {
             setUser(null);
             setLoading(false);
@@ -55,7 +62,7 @@ export function useSupabaseUser(userId: string | null) {
         });
 
         return () => unsubscribe();
-    }, [userId]);
+    }, [userId, isSupabaseConfigured]);
 
     return { user, loading, error };
 }
@@ -70,6 +77,12 @@ export function useSupabaseTasks(userId: string | null) {
     const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
+        if (!isSupabaseConfigured) {
+            setTasks([]);
+            setLoading(false);
+            return;
+        }
+
         if (!userId) {
             setTasks([]);
             setLoading(false);
@@ -89,24 +102,28 @@ export function useSupabaseTasks(userId: string | null) {
         });
 
         return () => unsubscribe();
-    }, [userId]);
+    }, [userId, isSupabaseConfigured]);
 
     const createTask = useCallback(async (task: Omit<Task, 'id' | 'createdAt'>) => {
+        if (!isSupabaseConfigured) return '';
+
         const taskRow = taskService.toDatabase({
             ...task,
             id: '',
             createdAt: new Date(),
         });
         return taskService.create(taskRow);
-    }, []);
+    }, [isSupabaseConfigured]);
 
     const updateTask = useCallback(async (taskId: string, updates: Partial<Task>) => {
+        if (!isSupabaseConfigured) return;
         await taskService.update(taskId, mapTaskUpdates(updates));
-    }, []);
+    }, [isSupabaseConfigured]);
 
     const deleteTask = useCallback(async (taskId: string) => {
+        if (!isSupabaseConfigured) return;
         await taskService.delete(taskId);
-    }, []);
+    }, [isSupabaseConfigured]);
 
     return { tasks, loading, error, createTask, updateTask, deleteTask };
 }
@@ -121,6 +138,13 @@ export function useSupabaseEnergy(coupleId: string | null, userId: string | null
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!isSupabaseConfigured) {
+            setActions([]);
+            setTotalPoints(0);
+            setLoading(false);
+            return;
+        }
+
         if (!coupleId) {
             setActions([]);
             setTotalPoints(0);
@@ -141,11 +165,11 @@ export function useSupabaseEnergy(coupleId: string | null, userId: string | null
         });
 
         return () => unsubscribe();
-    }, [coupleId, userId]);
+    }, [coupleId, userId, isSupabaseConfigured]);
 
     const addPoints = useCallback(
         async (actionType: ActionType, points: number, description?: string) => {
-            if (!coupleId || !userId) return;
+            if (!isSupabaseConfigured || !coupleId || !userId) return;
 
             await energyService.addAction({
                 couple_id: coupleId,
@@ -155,7 +179,7 @@ export function useSupabaseEnergy(coupleId: string | null, userId: string | null
                 description: description ?? null,
             });
         },
-        [coupleId, userId]
+        [coupleId, userId, isSupabaseConfigured]
     );
 
     return { actions, totalPoints, loading, addPoints };
@@ -170,6 +194,12 @@ export function useSupabaseRewards(coupleId: string | null) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!isSupabaseConfigured) {
+            setRewards([]);
+            setLoading(false);
+            return;
+        }
+
         if (!coupleId) {
             setRewards([]);
             setLoading(false);
@@ -184,11 +214,11 @@ export function useSupabaseRewards(coupleId: string | null) {
         });
 
         return () => unsubscribe();
-    }, [coupleId]);
+    }, [coupleId, isSupabaseConfigured]);
 
     const createReward = useCallback(
         async (reward: Omit<Reward, 'id' | 'isRedeemed'>) => {
-            if (!coupleId) return;
+            if (!isSupabaseConfigured || !coupleId) return;
 
             await rewardService.create({
                 couple_id: coupleId,
@@ -199,12 +229,13 @@ export function useSupabaseRewards(coupleId: string | null) {
                 created_by: reward.createdBy,
             });
         },
-        [coupleId]
+        [coupleId, isSupabaseConfigured]
     );
 
     const redeemReward = useCallback(async (rewardId: string) => {
+        if (!isSupabaseConfigured) return;
         await rewardService.redeem(rewardId);
-    }, []);
+    }, [isSupabaseConfigured]);
 
     const availableRewards = rewards.filter((reward) => !reward.isRedeemed);
 
@@ -221,6 +252,11 @@ export function usePartnerPairing(userId: string | null) {
     const [error, setError] = useState<string | null>(null);
 
     const generateCode = useCallback(async () => {
+        if (!isSupabaseConfigured) {
+            setError('请先配置 Supabase');
+            return null;
+        }
+
         if (!userId) return null;
 
         setLoading(true);
@@ -235,10 +271,15 @@ export function usePartnerPairing(userId: string | null) {
         } finally {
             setLoading(false);
         }
-    }, [userId]);
+    }, [userId, isSupabaseConfigured]);
 
     const pairWithCode = useCallback(
         async (code: string) => {
+            if (!isSupabaseConfigured) {
+                setError('请先配置 Supabase');
+                return false;
+            }
+
             if (!userId) return false;
 
             setLoading(true);
@@ -256,7 +297,7 @@ export function usePartnerPairing(userId: string | null) {
                 setLoading(false);
             }
         },
-        [userId]
+        [userId, isSupabaseConfigured]
     );
 
     return { pairingCode, loading, error, generateCode, pairWithCode };
