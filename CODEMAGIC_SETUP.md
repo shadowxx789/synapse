@@ -42,14 +42,10 @@ EXPO_TOKEN=<your-expo-access-token>
 ```
 获取方式: `npx expo login` 然后 `npx expo whoami --token`
 
-### 2. `firebase_config`
+### 2. `supabase_config`
 ```
-EXPO_PUBLIC_FIREBASE_API_KEY=<your-api-key>
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=<your-project>.firebaseapp.com
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=<your-project-id>
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=<your-project>.appspot.com
-EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=<your-sender-id>
-EXPO_PUBLIC_FIREBASE_APP_ID=<your-app-id>
+EXPO_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<your-anon-key>
 ```
 
 ### 3. `openai_config`
@@ -135,7 +131,7 @@ git push origin main --tags
 
 ### Web
 - **路径**: `synapse-app/dist/`
-- **部署**: 可直接部署到 Vercel、Netlify 或 Firebase Hosting
+- **部署**: 可直接部署到 Vercel、Netlify 或任意静态托管
 
 ## 常见问题
 

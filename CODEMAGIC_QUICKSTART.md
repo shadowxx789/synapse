@@ -11,14 +11,10 @@
 
 #### 必需的环境变量（创建环境变量组）
 
-**firebase_config** 组:
+**supabase_config** 组:
 ```bash
-EXPO_PUBLIC_FIREBASE_API_KEY=AIza...
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=synapse-xxxx.firebaseapp.com
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=synapse-xxxx
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=synapse-xxxx.appspot.com
-EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456789
-EXPO_PUBLIC_FIREBASE_APP_ID=1:123456789:web:xxxxx
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 **openai_config** 组:

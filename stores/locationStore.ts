@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { supabase, isSupabaseConfigured } from '@/services/supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export interface GeoFence {
     id: string;
@@ -49,6 +51,13 @@ interface LocationState {
     bodyDoublingStats: BodyDoublingStats;
     supporterMessage: string;
 
+    // Presence connection
+    _channel: RealtimeChannel | null;
+    _role: 'executor' | 'supporter' | null;
+    _coupleId: string | null;
+    _userId: string | null;
+    _heartbeatInterval: ReturnType<typeof setInterval> | null;
+
     setCurrentLocation: (lat: number, lng: number) => void;
     addGeoFence: (fence: Omit<GeoFence, 'id'>) => void;
     removeGeoFence: (id: string) => void;
@@ -62,6 +71,12 @@ interface LocationState {
     setSupporterMessage: (message: string) => void;
     getSessionStats: () => BodyDoublingStats;
     completeGeoFenceTask: (fenceId: string, task: string) => void;
+
+    // New Presence methods
+    connectToPartner: (coupleId: string, userId: string, role: 'executor' | 'supporter') => void;
+    disconnectFromPartner: () => void;
+    supporterJoinSession: () => void;
+    leaveSession: () => void;
 }
 
 // Default geo-fences
@@ -138,6 +153,13 @@ export const useLocationStore = create<LocationState>((set, get) => ({
         streak: 0,
     },
     supporterMessage: '',
+
+    // Presence state
+    _channel: null,
+    _role: null,
+    _coupleId: null,
+    _userId: null,
+    _heartbeatInterval: null,
 
     setCurrentLocation: (latitude, longitude) => {
         set({ currentLocation: { latitude, longitude } });
@@ -308,5 +330,223 @@ export const useLocationStore = create<LocationState>((set, get) => ({
                     : f
             ),
         }));
+    },
+
+    // ========================================================================
+    // Presence Methods - Real-time connection with partner
+    // ========================================================================
+
+    connectToPartner: (coupleId, userId, role) => {
+        const { _channel } = get();
+
+        // Already connected
+        if (_channel) {
+            console.log('[Presence] Already connected');
+            return;
+        }
+
+        if (!isSupabaseConfigured) {
+            console.warn('[Presence] Supabase not configured, using mock mode');
+            set({ _coupleId: coupleId, _userId: userId, _role: role });
+            return;
+        }
+
+        console.log(`[Presence] Connecting as ${role} to couple:${coupleId}`);
+
+        const channel = supabase.channel(`couple:${coupleId}`, {
+            config: {
+                presence: {
+                    key: userId,
+                },
+            },
+        });
+
+        channel
+            .on('presence', { event: 'sync' }, () => {
+                const state = channel.presenceState();
+                console.log('[Presence] Sync:', state);
+
+                // Find partner's presence
+                const partnerPresence = Object.entries(state).find(
+                    ([key]) => key !== userId
+                );
+
+                if (partnerPresence) {
+                    const [, presences] = partnerPresence;
+                    const latestPresence = (presences as unknown as Array<{ online_at: string; role: string; activity: PartnerActivity; body_doubling_active?: boolean }>)[0];
+                    if (latestPresence) {
+                        set({
+                            partnerOnline: true,
+                            partnerActivity: latestPresence.activity || 'idle',
+                            lastPartnerActivity: new Date(latestPresence.online_at),
+                            // If partner (executor) has body doubling active, we show it
+                            bodyDoublingActive: latestPresence.body_doubling_active || get().bodyDoublingActive,
+                        });
+                    }
+                } else {
+                    set({ partnerOnline: false, partnerActivity: 'idle' });
+                }
+            })
+            .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+                if (key !== userId) {
+                    console.log('[Presence] Partner joined:', key);
+                    const latest = newPresences[0] as { activity?: PartnerActivity; body_doubling_active?: boolean } | undefined;
+                    set({
+                        partnerOnline: true,
+                        partnerActivity: latest?.activity || 'working',
+                        lastPartnerActivity: new Date(),
+                        bodyDoublingActive: latest?.body_doubling_active || get().bodyDoublingActive,
+                    });
+                }
+            })
+            .on('presence', { event: 'leave' }, ({ key }) => {
+                if (key !== userId) {
+                    console.log('[Presence] Partner left:', key);
+                    // Wait 60 seconds before marking offline (per user requirement)
+                    setTimeout(() => {
+                        const currentState = get();
+                        // Check if partner is still not online after 60s
+                        if (currentState.lastPartnerActivity) {
+                            const timeSinceLastActivity = Date.now() - currentState.lastPartnerActivity.getTime();
+                            if (timeSinceLastActivity >= 60000) {
+                                set({ partnerOnline: false, partnerActivity: 'away' });
+                            }
+                        }
+                    }, 60000);
+                }
+            })
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log('[Presence] Subscribed, tracking presence');
+                    await channel.track({
+                        online_at: new Date().toISOString(),
+                        role,
+                        activity: 'idle',
+                        body_doubling_active: false,
+                    });
+
+                    // Start heartbeat interval (every 30 seconds)
+                    const heartbeatInterval = setInterval(async () => {
+                        const state = get();
+                        await channel.track({
+                            online_at: new Date().toISOString(),
+                            role: state._role,
+                            activity: state._role === 'executor' ? 'working' : 'idle',
+                            body_doubling_active: state.bodyDoublingActive,
+                        });
+                    }, 30000);
+
+                    set({ _heartbeatInterval: heartbeatInterval });
+                }
+            });
+
+        set({
+            _channel: channel,
+            _coupleId: coupleId,
+            _userId: userId,
+            _role: role,
+        });
+    },
+
+    disconnectFromPartner: () => {
+        const { _channel, _heartbeatInterval } = get();
+
+        if (_heartbeatInterval) {
+            clearInterval(_heartbeatInterval);
+        }
+
+        if (_channel) {
+            console.log('[Presence] Disconnecting');
+            _channel.unsubscribe();
+        }
+
+        set({
+            _channel: null,
+            _coupleId: null,
+            _userId: null,
+            _role: null,
+            _heartbeatInterval: null,
+            partnerOnline: false,
+        });
+    },
+
+    supporterJoinSession: () => {
+        const { _channel, _role, currentSession, bodyDoublingActive } = get();
+
+        if (_role !== 'supporter') {
+            console.warn('[Presence] Only supporter can join session');
+            return;
+        }
+
+        console.log('[Presence] Supporter joining session');
+
+        // Update local state
+        set({
+            currentSession: currentSession
+                ? { ...currentSession, partnerJoinedAt: new Date() }
+                : {
+                    id: Date.now().toString(),
+                    startTime: new Date(),
+                    durationMinutes: 0,
+                    partnerJoinedAt: new Date(),
+                },
+        });
+
+        // Broadcast to partner
+        if (_channel && isSupabaseConfigured) {
+            _channel.track({
+                online_at: new Date().toISOString(),
+                role: 'supporter',
+                activity: 'working',
+                body_doubling_active: true,
+                joined_session: true,
+            });
+        }
+    },
+
+    leaveSession: () => {
+        const { _channel, _role, currentSession, sessionHistory, bodyDoublingStats } = get();
+
+        console.log('[Presence] Leaving session');
+
+        // Calculate session stats
+        if (currentSession) {
+            const duration = Math.round(
+                (Date.now() - new Date(currentSession.startTime).getTime()) / 60000
+            );
+            const completedSession = {
+                ...currentSession,
+                endTime: new Date(),
+                durationMinutes: duration,
+            };
+
+            const newHistory = [...sessionHistory, completedSession];
+            const newTotalMinutes = bodyDoublingStats.totalMinutes + duration;
+            const newTotalSessions = bodyDoublingStats.totalSessions + 1;
+
+            set({
+                currentSession: null,
+                sessionHistory: newHistory,
+                bodyDoublingStats: {
+                    ...bodyDoublingStats,
+                    totalSessions: newTotalSessions,
+                    totalMinutes: newTotalMinutes,
+                    avgSessionLength: Math.round(newTotalMinutes / newTotalSessions),
+                    longestSession: Math.max(bodyDoublingStats.longestSession, duration),
+                    thisWeekMinutes: bodyDoublingStats.thisWeekMinutes + duration,
+                },
+            });
+        }
+
+        // Broadcast to partner
+        if (_channel && isSupabaseConfigured) {
+            _channel.track({
+                online_at: new Date().toISOString(),
+                role: _role,
+                activity: 'idle',
+                body_doubling_active: false,
+                joined_session: false,
+            });
+        }
     },
 }));

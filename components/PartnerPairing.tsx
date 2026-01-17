@@ -13,7 +13,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
-import { usePartnerPairing } from '@/hooks/useFirestore';
+import { usePartnerPairing } from '@/hooks/useBackend';
 import { useUserStore } from '@/stores/userStore';
 
 interface PartnerPairingProps {

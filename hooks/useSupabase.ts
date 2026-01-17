@@ -1,30 +1,54 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
-    userService,
-    taskService,
+    EnergyActionRow,
+    ProfileRow,
+    RewardRow,
+    TaskRow,
     energyService,
     rewardService,
-    FirestoreUser,
-    FirestoreTask,
-    FirestoreEnergyAction,
-    FirestoreReward,
-} from '@/services/firebase';
-import { Task } from '@/stores/taskStore';
-import { Reward } from '@/stores/rewardStore';
+    taskService,
+    userService,
+} from '@/services/supabaseDatabase';
+import { isSupabaseConfigured } from '@/services/supabase';
 import { ActionType } from '@/stores/energyStore';
+import { Reward } from '@/stores/rewardStore';
+import { Task } from '@/stores/taskStore';
+
+const toIso = (value: Date | undefined): string | undefined => {
+    if (!value) return undefined;
+    return value.toISOString();
+};
+
+const mapTaskUpdates = (updates: Partial<Task>): Partial<TaskRow> => {
+    const completedAt = toIso(updates.completedAt);
+    return {
+        ...(updates.title !== undefined ? { title: updates.title } : {}),
+        ...(updates.description !== undefined ? { description: updates.description } : {}),
+        ...(updates.visualTimerMinutes !== undefined
+            ? { visual_timer_minutes: updates.visualTimerMinutes }
+            : {}),
+        ...(updates.status !== undefined ? { status: updates.status } : {}),
+        ...(completedAt ? { completed_at: completedAt } : {}),
+    };
+};
 
 // ============================================================================
-// Hook: useFirestoreUser
-// Real-time subscription to user document
+// Hook: useSupabaseUser
 // ============================================================================
 
-export function useFirestoreUser(userId: string | null) {
-    const [user, setUser] = useState<FirestoreUser | null>(null);
+export function useSupabaseUser(userId: string | null) {
+    const [user, setUser] = useState<ProfileRow | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
+        if (!isSupabaseConfigured) {
+            setUser(null);
+            setLoading(false);
+            return;
+        }
+
         if (!userId) {
             setUser(null);
             setLoading(false);
@@ -38,22 +62,27 @@ export function useFirestoreUser(userId: string | null) {
         });
 
         return () => unsubscribe();
-    }, [userId]);
+    }, [userId, isSupabaseConfigured]);
 
     return { user, loading, error };
 }
 
 // ============================================================================
-// Hook: useFirestoreTasks
-// Real-time subscription to user's tasks
+// Hook: useSupabaseTasks
 // ============================================================================
 
-export function useFirestoreTasks(userId: string | null) {
+export function useSupabaseTasks(userId: string | null) {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
+        if (!isSupabaseConfigured) {
+            setTasks([]);
+            setLoading(false);
+            return;
+        }
+
         if (!userId) {
             setTasks([]);
             setLoading(false);
@@ -61,47 +90,61 @@ export function useFirestoreTasks(userId: string | null) {
         }
 
         setLoading(true);
-        const unsubscribe = taskService.subscribeToUserTasks(userId, (firestoreTasks) => {
-            const localTasks = firestoreTasks.map((t) => taskService.toLocal(t));
-            setTasks(localTasks);
-            setLoading(false);
+        const unsubscribe = taskService.subscribeToUserTasks(userId, async (taskRows) => {
+            try {
+                const localTasks = await Promise.all(taskRows.map((taskRow) => taskService.toLocal(taskRow)));
+                setTasks(localTasks);
+            } catch (err) {
+                setError(err as Error);
+            } finally {
+                setLoading(false);
+            }
         });
 
         return () => unsubscribe();
-    }, [userId]);
+    }, [userId, isSupabaseConfigured]);
 
     const createTask = useCallback(async (task: Omit<Task, 'id' | 'createdAt'>) => {
-        const firestoreTask = taskService.toFirestore({
+        if (!isSupabaseConfigured) return '';
+
+        const taskRow = taskService.toDatabase({
             ...task,
-            id: '', // Will be set by Firebase
+            id: '',
             createdAt: new Date(),
-            updatedAt: new Date(),
         });
-        return taskService.create(firestoreTask);
-    }, []);
+        return taskService.create(taskRow);
+    }, [isSupabaseConfigured]);
 
     const updateTask = useCallback(async (taskId: string, updates: Partial<Task>) => {
-        await taskService.update(taskId, updates as Partial<FirestoreTask>);
-    }, []);
+        if (!isSupabaseConfigured) return;
+        await taskService.update(taskId, mapTaskUpdates(updates));
+    }, [isSupabaseConfigured]);
 
     const deleteTask = useCallback(async (taskId: string) => {
+        if (!isSupabaseConfigured) return;
         await taskService.delete(taskId);
-    }, []);
+    }, [isSupabaseConfigured]);
 
     return { tasks, loading, error, createTask, updateTask, deleteTask };
 }
 
 // ============================================================================
-// Hook: useFirestoreEnergy
-// Real-time subscription to couple's energy actions
+// Hook: useSupabaseEnergy
 // ============================================================================
 
-export function useFirestoreEnergy(coupleId: string | null, userId: string | null) {
-    const [actions, setActions] = useState<FirestoreEnergyAction[]>([]);
+export function useSupabaseEnergy(coupleId: string | null, userId: string | null) {
+    const [actions, setActions] = useState<EnergyActionRow[]>([]);
     const [totalPoints, setTotalPoints] = useState(0);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!isSupabaseConfigured) {
+            setActions([]);
+            setTotalPoints(0);
+            setLoading(false);
+            return;
+        }
+
         if (!coupleId) {
             setActions([]);
             setTotalPoints(0);
@@ -112,48 +155,51 @@ export function useFirestoreEnergy(coupleId: string | null, userId: string | nul
         setLoading(true);
         const unsubscribe = energyService.subscribeToActions(coupleId, (energyActions) => {
             setActions(energyActions);
-            // Calculate total points for the current user
             if (userId) {
                 const points = energyActions
-                    .filter((a) => a.userId === userId)
-                    .reduce((sum, a) => sum + a.points, 0);
+                    .filter((action) => action.user_id === userId)
+                    .reduce((sum, action) => sum + action.points, 0);
                 setTotalPoints(points);
             }
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [coupleId, userId]);
+    }, [coupleId, userId, isSupabaseConfigured]);
 
     const addPoints = useCallback(
         async (actionType: ActionType, points: number, description?: string) => {
-            if (!coupleId || !userId) return;
+            if (!isSupabaseConfigured || !coupleId || !userId) return;
 
             await energyService.addAction({
-                id: '', // Will be set by Firebase
-                coupleId,
-                userId,
-                actionType,
+                couple_id: coupleId,
+                user_id: userId,
+                action_type: actionType,
                 points,
-                description,
+                description: description ?? null,
             });
         },
-        [coupleId, userId]
+        [coupleId, userId, isSupabaseConfigured]
     );
 
     return { actions, totalPoints, loading, addPoints };
 }
 
 // ============================================================================
-// Hook: useFirestoreRewards
-// Real-time subscription to couple's rewards
+// Hook: useSupabaseRewards
 // ============================================================================
 
-export function useFirestoreRewards(coupleId: string | null) {
+export function useSupabaseRewards(coupleId: string | null) {
     const [rewards, setRewards] = useState<Reward[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!isSupabaseConfigured) {
+            setRewards([]);
+            setLoading(false);
+            return;
+        }
+
         if (!coupleId) {
             setRewards([]);
             setLoading(false);
@@ -161,45 +207,43 @@ export function useFirestoreRewards(coupleId: string | null) {
         }
 
         setLoading(true);
-        const unsubscribe = rewardService.subscribeToRewards(coupleId, (firestoreRewards) => {
-            const localRewards = firestoreRewards.map((r) => rewardService.toLocal(r));
+        const unsubscribe = rewardService.subscribeToRewards(coupleId, (rewardRows) => {
+            const localRewards = rewardRows.map((reward) => rewardService.toLocal(reward as RewardRow));
             setRewards(localRewards);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [coupleId]);
+    }, [coupleId, isSupabaseConfigured]);
 
     const createReward = useCallback(
         async (reward: Omit<Reward, 'id' | 'isRedeemed'>) => {
-            if (!coupleId) return;
+            if (!isSupabaseConfigured || !coupleId) return;
 
             await rewardService.create({
-                ...reward,
-                id: '', // Will be set by Firebase
-                coupleId,
-                isRedeemed: false,
+                couple_id: coupleId,
+                title: reward.title,
+                description: reward.description ?? null,
+                points_cost: reward.pointsCost,
+                icon: reward.icon,
+                created_by: reward.createdBy,
             });
         },
-        [coupleId]
+        [coupleId, isSupabaseConfigured]
     );
 
     const redeemReward = useCallback(async (rewardId: string) => {
+        if (!isSupabaseConfigured) return;
         await rewardService.redeem(rewardId);
-    }, []);
+    }, [isSupabaseConfigured]);
 
-    const deleteReward = useCallback(async (rewardId: string) => {
-        await rewardService.delete(rewardId);
-    }, []);
+    const availableRewards = rewards.filter((reward) => !reward.isRedeemed);
 
-    const availableRewards = rewards.filter((r) => !r.isRedeemed);
-
-    return { rewards, availableRewards, loading, createReward, redeemReward, deleteReward };
+    return { rewards, availableRewards, loading, createReward, redeemReward };
 }
 
 // ============================================================================
 // Hook: usePartnerPairing
-// Partner pairing functionality
 // ============================================================================
 
 export function usePartnerPairing(userId: string | null) {
@@ -207,27 +251,35 @@ export function usePartnerPairing(userId: string | null) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Generate a new pairing code
     const generateCode = useCallback(async () => {
+        if (!isSupabaseConfigured) {
+            setError('请先配置 Supabase');
+            return null;
+        }
+
         if (!userId) return null;
 
         setLoading(true);
         try {
             const code = userService.generatePairingCode();
-            await userService.update(userId, { pairingCode: code });
+            await userService.update(userId, { pairing_code: code });
             setPairingCode(code);
             return code;
-        } catch (e) {
+        } catch {
             setError('生成配对码失败');
             return null;
         } finally {
             setLoading(false);
         }
-    }, [userId]);
+    }, [userId, isSupabaseConfigured]);
 
-    // Pair with a partner using their code
     const pairWithCode = useCallback(
         async (code: string) => {
+            if (!isSupabaseConfigured) {
+                setError('请先配置 Supabase');
+                return false;
+            }
+
             if (!userId) return false;
 
             setLoading(true);
@@ -238,14 +290,14 @@ export function usePartnerPairing(userId: string | null) {
                     setError('配对码无效或已过期');
                 }
                 return success;
-            } catch (e) {
+            } catch {
                 setError('配对失败，请重试');
                 return false;
             } finally {
                 setLoading(false);
             }
         },
-        [userId]
+        [userId, isSupabaseConfigured]
     );
 
     return { pairingCode, loading, error, generateCode, pairWithCode };
@@ -253,7 +305,6 @@ export function usePartnerPairing(userId: string | null) {
 
 // ============================================================================
 // Hook: useCoupleId
-// Derive couple ID from user and partner
 // ============================================================================
 
 export function useCoupleId(userId: string | null, partnerId: string | null): string | null {

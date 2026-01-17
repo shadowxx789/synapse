@@ -12,7 +12,8 @@ interface VisualTimerProps {
 }
 
 const { width } = Dimensions.get('window');
-const TIMER_SIZE = width * 0.55; // Smaller to reduce clutter
+const MAX_TIMER_SIZE = 280;
+const TIMER_SIZE = Math.min(width * 0.65, MAX_TIMER_SIZE);
 const SAND_GRAIN_COUNT = 20;
 
 export default function VisualTimer({

@@ -15,7 +15,7 @@ import * as Haptics from 'expo-haptics';
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 import { useUserStore } from '@/stores/userStore';
-import { userService } from '@/services/firebase';
+import { userService } from '@/services/backend';
 import AISettings from '@/components/AISettings';
 import PartnerStatus from '@/components/PartnerStatus';
 

@@ -36,6 +36,14 @@ export default function SupporterLayout() {
                 }}
             />
             <Tabs.Screen
+                name="connect"
+                options={{
+                    tabBarIcon: ({ focused }) => (
+                        <TabIcon icon="💚" label="连线" focused={focused} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
                 name="buffer"
                 options={{
                     tabBarIcon: ({ focused }) => (

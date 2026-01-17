@@ -14,6 +14,7 @@ interface TaskCardProps {
 }
 
 const { width } = Dimensions.get('window');
+const MAX_CARD_WIDTH = 400;
 
 export default function TaskCard({
     title,
@@ -38,205 +39,188 @@ export default function TaskCard({
         onSkip?.();
     };
 
-    // Simplified progress for calm focus - just show completion count
     const remainingSteps = totalSteps - stepNumber;
+    const cardWidth = Math.min(width - Spacing.lg * 2, MAX_CARD_WIDTH);
 
     return (
         <View style={styles.container}>
-            {/* Minimal progress badge - no overwhelming bar */}
-            <View style={styles.progressBadge}>
-                <Text style={styles.progressBadgeText}>{stepNumber}/{totalSteps}</Text>
-                {remainingSteps > 0 && remainingSteps <= 3 && (
-                    <Text style={styles.progressHintText}>还有 {remainingSteps} 步!</Text>
-                )}
-            </View>
-
-            {/* Task Card - Simplified, focused */}
-            <View style={styles.card}>
-                {/* Time as subtle background element, not prominent */}
-                <View style={styles.timeGlow}>
-                    <Text style={styles.timeEmoji}>⏱</Text>
-                    <Text style={styles.timeNumber}>{estimatedMinutes}</Text>
+            {/* Compact card with title and progress */}
+            <View style={[styles.card, { width: cardWidth }]}>
+                {/* Progress and time in header row */}
+                <View style={styles.cardHeader}>
+                    <View style={styles.progressBadge}>
+                        <Text style={styles.progressText}>{stepNumber}/{totalSteps}</Text>
+                        {remainingSteps > 0 && remainingSteps <= 3 && (
+                            <Text style={styles.progressHint}> · 还有{remainingSteps}步</Text>
+                        )}
+                    </View>
+                    <View style={styles.timeBadge}>
+                        <Text style={styles.timeText}>⏱ {estimatedMinutes}分钟</Text>
+                    </View>
                 </View>
 
-                {/* Large, focused title */}
-                <Text style={styles.taskTitle}>{title}</Text>
+                {/* Task title */}
+                <Text style={styles.taskTitle} numberOfLines={2}>{title}</Text>
 
-                {/* Single focus hint, minimal text */}
-                <View style={styles.focusIndicator}>
+                {/* Focus hint */}
+                <View style={styles.focusHint}>
                     <View style={styles.focusDot} />
                     <Text style={styles.focusText}>只做这件事</Text>
                 </View>
             </View>
 
-            {/* BIG, prominent complete button - the dopamine hit */}
-            <TouchableOpacity
-                style={styles.completeButton}
-                onPress={handleComplete}
-                activeOpacity={0.7}
-            >
-                <LinearGradient
-                    colors={[Colors.primary, '#FF8C61', '#FFB347']}
-                    style={styles.buttonGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                >
-                    <View style={styles.buttonContent}>
-                        <Text style={styles.checkMark}>✓</Text>
-                        <Text style={styles.buttonText}>完成!</Text>
-                    </View>
-                </LinearGradient>
-            </TouchableOpacity>
-
-            {onSkip && (
+            {/* Action buttons row */}
+            <View style={[styles.actionsRow, { width: cardWidth }]}>
+                {onSkip && (
+                    <TouchableOpacity
+                        style={styles.skipButton}
+                        onPress={handleSkip}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={styles.skipText}>跳过</Text>
+                    </TouchableOpacity>
+                )}
                 <TouchableOpacity
-                    style={styles.skipButton}
-                    onPress={handleSkip}
+                    style={[styles.completeButton, !onSkip && styles.completeButtonFull]}
+                    onPress={handleComplete}
                     activeOpacity={0.7}
                 >
-                    <Text style={styles.skipText}>先跳过</Text>
+                    <LinearGradient
+                        colors={[Colors.primary, '#FF8C61']}
+                        style={styles.buttonGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                    >
+                        <Text style={styles.completeText}>✓ 完成!</Text>
+                    </LinearGradient>
                 </TouchableOpacity>
-            )}
+            </View>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
-        flex: 1,
-        justifyContent: 'center',
+        width: '100%',
         alignItems: 'center',
-        padding: Spacing.lg,
+        paddingHorizontal: Spacing.lg,
+        paddingBottom: Spacing.lg,
+    },
+    card: {
+        backgroundColor: Colors.surface,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        borderWidth: 2,
+        borderColor: Colors.executor.glow,
+        ...Platform.select({
+            web: { boxShadow: '0px 4px 12px rgba(255, 107, 53, 0.15)' },
+            default: {
+                shadowColor: Colors.executor.primary,
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.15,
+                shadowRadius: 6,
+                elevation: 6,
+            },
+        }),
+    },
+    cardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: Spacing.sm,
     },
     progressBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: Spacing.md,
-        marginBottom: Spacing.lg,
     },
-    progressBadgeText: {
+    progressText: {
         color: Colors.textSecondary,
         fontSize: FontSizes.sm,
         fontWeight: '600',
     },
-    progressHintText: {
+    progressHint: {
         color: Colors.executor.accent,
         fontSize: FontSizes.sm,
         fontWeight: '600',
     },
-    card: {
-        width: width - Spacing.lg * 2,
-        backgroundColor: Colors.surface,
-        borderRadius: BorderRadius.xxl,
-        padding: Spacing.xxl,
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: Colors.executor.glow,
-        ...Platform.select({
-            web: { boxShadow: '0px 8px 20px rgba(255, 107, 53, 0.25)' },
-            default: {
-                shadowColor: 'rgba(255, 107, 53, 0.25)',
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.25,
-                shadowRadius: 12,
-                elevation: 12,
-            },
-        }),
-        position: 'relative',
-        minHeight: 280,
-        justifyContent: 'center',
-    },
-    timeGlow: {
-        position: 'absolute',
-        top: Spacing.md,
-        right: Spacing.md,
-        flexDirection: 'row',
-        alignItems: 'center',
+    timeBadge: {
         backgroundColor: Colors.surfaceElevated,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.sm,
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: Spacing.xs,
         borderRadius: BorderRadius.full,
-        gap: Spacing.xs,
     },
-    timeEmoji: {
-        fontSize: FontSizes.md,
-    },
-    timeNumber: {
+    timeText: {
         color: Colors.executor.primary,
-        fontSize: FontSizes.md,
-        fontWeight: '700',
+        fontSize: FontSizes.xs,
+        fontWeight: '600',
     },
     taskTitle: {
         color: Colors.textPrimary,
-        fontSize: FontSizes.xxl,
+        fontSize: FontSizes.xl,
         fontWeight: '700',
         textAlign: 'center',
-        lineHeight: FontSizes.xxl * 1.3,
-        marginBottom: Spacing.xl,
-        paddingHorizontal: Spacing.sm,
+        lineHeight: FontSizes.xl * 1.3,
+        marginBottom: Spacing.sm,
     },
-    focusIndicator: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        backgroundColor: Colors.executor.glow,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.sm,
-        borderRadius: BorderRadius.full,
-    },
-    focusDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: Colors.primary,
-    },
-    focusText: {
-        color: Colors.executor.primary,
-        fontSize: FontSizes.sm,
-        fontWeight: '600',
-    },
-    completeButton: {
-        width: width - Spacing.lg * 2,
-        marginTop: Spacing.xxl,
-        borderRadius: BorderRadius.xl,
-        overflow: 'hidden',
-        ...Platform.select({
-            web: { boxShadow: '0px 6px 16px rgba(255, 107, 53, 0.5)' },
-            default: {
-                shadowColor: 'rgba(255, 107, 53, 0.5)',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.5,
-                shadowRadius: 10,
-                elevation: 10,
-            },
-        }),
-    },
-    buttonGradient: {
-        paddingVertical: Spacing.xl,
-    },
-    buttonContent: {
+    focusHint: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: Spacing.md,
+        gap: Spacing.xs,
     },
-    checkMark: {
-        fontSize: FontSizes.xl,
-        fontWeight: '700',
+    focusDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: Colors.primary,
     },
-    buttonText: {
-        color: '#FFF',
-        fontSize: FontSizes.xl,
-        fontWeight: '800',
-        letterSpacing: 1,
+    focusText: {
+        color: Colors.executor.accent,
+        fontSize: FontSizes.xs,
+        fontWeight: '500',
+    },
+    actionsRow: {
+        flexDirection: 'row',
+        marginTop: Spacing.sm,
+        gap: Spacing.sm,
     },
     skipButton: {
-        marginTop: Spacing.lg,
-        padding: Spacing.md,
+        flex: 1,
+        paddingVertical: Spacing.md,
+        alignItems: 'center',
+        backgroundColor: Colors.surfaceElevated,
+        borderRadius: BorderRadius.md,
     },
     skipText: {
         color: Colors.textMuted,
         fontSize: FontSizes.md,
-        fontWeight: '500',
+        fontWeight: '600',
+    },
+    completeButton: {
+        flex: 2,
+        borderRadius: BorderRadius.md,
+        overflow: 'hidden',
+        ...Platform.select({
+            web: { boxShadow: '0px 4px 12px rgba(255, 107, 53, 0.4)' },
+            default: {
+                shadowColor: Colors.executor.primary,
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.4,
+                shadowRadius: 6,
+                elevation: 6,
+            },
+        }),
+    },
+    completeButtonFull: {
+        flex: 1,
+    },
+    buttonGradient: {
+        paddingVertical: Spacing.md,
+        alignItems: 'center',
+    },
+    completeText: {
+        color: '#FFF',
+        fontSize: FontSizes.lg,
+        fontWeight: '700',
     },
 });

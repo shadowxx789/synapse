@@ -6,8 +6,10 @@ import {
     TouchableOpacity,
     Dimensions,
     Modal,
+    Platform,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -22,6 +24,7 @@ import Animated, {
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 import { useLocationStore, PartnerActivity } from '@/stores/locationStore';
+import { useUserStore } from '@/stores/userStore';
 import { useBadgeStore } from '@/stores/badgeStore';
 
 const { width } = Dimensions.get('window');
@@ -42,6 +45,7 @@ export default function BodyDoubling({
     partnerName = '支持者',
     onToggle,
 }: BodyDoublingProps) {
+    const user = useUserStore((s) => s.user);
     const {
         bodyDoublingActive,
         partnerOnline,
@@ -53,6 +57,8 @@ export default function BodyDoubling({
         setPartnerOnline,
         updatePartnerActivity,
         endSession,
+        connectToPartner,
+        disconnectFromPartner,
     } = useLocationStore();
 
     const { addBodyDoublingMinutes } = useBadgeStore();
@@ -68,6 +74,37 @@ export default function BodyDoubling({
     const connectionLine = useSharedValue(0);
     const heartbeatScale = useSharedValue(1);
 
+    // Connect to partner's presence channel on mount
+    useEffect(() => {
+        if (user?.coupleId && user?.id) {
+            connectToPartner(user.coupleId, user.id, 'executor');
+        }
+        return () => {
+            disconnectFromPartner();
+        };
+    }, [user?.coupleId, user?.id]);
+
+    // Keep screen awake when body doubling is active (mobile only)
+    useEffect(() => {
+        if (Platform.OS === 'web') return;
+
+        if (bodyDoublingActive) {
+            activateKeepAwakeAsync().catch(() => {
+                // Ignore errors on activation
+            });
+        }
+
+        return () => {
+            if (bodyDoublingActive) {
+                try {
+                    deactivateKeepAwake();
+                } catch {
+                    // Ignore errors on deactivation
+                }
+            }
+        };
+    }, [bodyDoublingActive]);
+
     // Session timer
     useEffect(() => {
         let interval: ReturnType<typeof setInterval>;
@@ -82,26 +119,6 @@ export default function BodyDoubling({
         }
         return () => clearInterval(interval);
     }, [bodyDoublingActive, currentSession]);
-
-    // Simulate partner online status changes
-    useEffect(() => {
-        if (bodyDoublingActive) {
-            // Simulate partner coming online after 2 seconds
-            const timer = setTimeout(() => {
-                setPartnerOnline(true);
-                // Simulate activity changes
-                const activityTimer = setInterval(() => {
-                    const activities: PartnerActivity[] = ['working', 'break', 'working'];
-                    const randomActivity = activities[Math.floor(Math.random() * activities.length)];
-                    updatePartnerActivity(randomActivity);
-                }, 30000);
-                return () => clearInterval(activityTimer);
-            }, 2000);
-            return () => clearTimeout(timer);
-        } else {
-            setPartnerOnline(false);
-        }
-    }, [bodyDoublingActive]);
 
     // Pulse animation when partner is online
     useEffect(() => {
@@ -144,7 +161,9 @@ export default function BodyDoubling({
     }, [partnerOnline, bodyDoublingActive]);
 
     const handleToggle = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
 
         if (bodyDoublingActive) {
             // Show end session modal before stopping
@@ -163,7 +182,9 @@ export default function BodyDoubling({
         endSession(focusRating);
         setShowEndSessionModal(false);
         onToggle?.(false);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
     };
 
     const formatTime = (seconds: number) => {
