@@ -855,50 +855,51 @@ export default function ExecutorHomeScreen() {
                     </View>
                 </View>
 
-                {/* Visual Timer */}
-                <View style={styles.timerSection}>
-                    <VisualTimer
-                        totalMinutes={currentTask.visualTimerMinutes}
-                        remainingSeconds={remainingSeconds}
-                        onTimeUp={() => {
-                            if (Platform.OS !== 'web') {
-                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                            }
-                        }}
-                        onWarning={() => {
-                            if (Platform.OS !== 'web') {
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                            }
-                        }}
+                {/* Main execution content - flex layout, no scroll */}
+                <View style={styles.executionContent}>
+                    {/* Visual Timer - takes available space */}
+                    <View style={styles.timerSection}>
+                        <VisualTimer
+                            totalMinutes={currentTask.visualTimerMinutes}
+                            remainingSeconds={remainingSeconds}
+                            onTimeUp={() => {
+                                if (Platform.OS !== 'web') {
+                                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                                }
+                            }}
+                            onWarning={() => {
+                                if (Platform.OS !== 'web') {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                                }
+                            }}
+                        />
+
+                        {isPaused && (
+                            <View style={styles.pausedBadge}>
+                                <Text style={styles.pausedText}>⏸ 已暂停</Text>
+                            </View>
+                        )}
+
+                        {/* Pause button - integrated with timer */}
+                        <TouchableOpacity
+                            style={styles.pauseButton}
+                            onPress={handlePauseToggle}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.pauseIcon}>{isPaused ? '▶' : '⏸'}</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Task Card - compact at bottom */}
+                    <TaskCard
+                        title={currentSubtask.title}
+                        stepNumber={currentSubtaskIndex + 1}
+                        totalSteps={subtasks.length}
+                        estimatedMinutes={currentSubtask.visualTimerMinutes}
+                        onComplete={handleComplete}
+                        onSkip={handleSkip}
                     />
-
-                    {isPaused && (
-                        <View style={styles.pausedBadge}>
-                            <Text style={styles.pausedText}>⏸ 已暂停</Text>
-                        </View>
-                    )}
                 </View>
-
-                {/* Pause button */}
-                <View style={styles.controlSection}>
-                    <TouchableOpacity
-                        style={styles.pauseButton}
-                        onPress={handlePauseToggle}
-                        activeOpacity={0.7}
-                    >
-                        <Text style={styles.pauseIcon}>{isPaused ? '▶' : '⏸'}</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* Task Card */}
-                <TaskCard
-                    title={currentSubtask.title}
-                    stepNumber={currentSubtaskIndex + 1}
-                    totalSteps={subtasks.length}
-                    estimatedMinutes={currentSubtask.visualTimerMinutes}
-                    onComplete={handleComplete}
-                    onSkip={handleSkip}
-                />
 
                 {/* Celebration Overlay */}
                 <DopaminePop
@@ -1227,13 +1228,14 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
     timerSection: {
+        flex: 1,
         alignItems: 'center',
-        paddingVertical: Spacing.sm,
+        justifyContent: 'center',
     },
     pausedBadge: {
         position: 'absolute',
-        top: '55%',
-        backgroundColor: 'rgba(0,0,0,0.7)',
+        top: '45%',
+        backgroundColor: 'rgba(0,0,0,0.8)',
         paddingHorizontal: Spacing.lg,
         paddingVertical: Spacing.sm,
         borderRadius: BorderRadius.full,
@@ -1247,18 +1249,34 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: Spacing.xs,
     },
+    executionContent: {
+        flex: 1,
+        justifyContent: 'space-between',
+    },
     pauseButton: {
+        marginTop: Spacing.md,
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: Colors.surface,
-        borderWidth: 2,
-        borderColor: Colors.executor.glow,
+        backgroundColor: Colors.surfaceElevated,
+        borderWidth: 3,
+        borderColor: Colors.executor.primary,
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({
+            web: { boxShadow: '0px 4px 12px rgba(255, 107, 53, 0.4)' },
+            default: {
+                shadowColor: Colors.executor.primary,
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 8,
+                elevation: 8,
+            },
+        }),
     },
     pauseIcon: {
-        fontSize: FontSizes.lg,
+        fontSize: FontSizes.xl,
+        color: Colors.executor.primary,
     },
     // Empty State
     emptyState: {
