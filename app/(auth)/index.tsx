@@ -9,6 +9,7 @@ import {
     Platform,
     ScrollView,
     useWindowDimensions,
+    ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,12 +22,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useUserStore, UserRole } from '@/stores/userStore';
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
+import { authService } from '@/services/backend';
 
 const MAX_CONTENT_WIDTH = 480;
 
-export default function OnboardingScreen() {
+export default function RoleSelectionScreen() {
     const [selectedRole, setSelectedRole] = useState<UserRole>(null);
-    const { setPendingRole } = useUserStore();
+    const [isLoading, setIsLoading] = useState(false);
+    const { user, setRole } = useUserStore();
     const router = useRouter();
     const { width: windowWidth } = useWindowDimensions();
     const contentWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH);
@@ -38,18 +41,32 @@ export default function OnboardingScreen() {
         setSelectedRole(role);
     };
 
-    const handleContinue = () => {
-        if (!selectedRole) return;
+    const handleContinue = async () => {
+        if (!selectedRole || !user) return;
+
+        setIsLoading(true);
 
         if (Platform.OS !== 'web') {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
 
-        // Save selected role for registration
-        setPendingRole(selectedRole);
+        try {
+            // Update role in database
+            await authService.updateRole(user.id, selectedRole);
 
-        // Navigate to registration
-        router.push('/(auth)/register');
+            // Update local state
+            setRole(selectedRole);
+
+            // Navigate to pairing
+            router.replace('/(auth)/pair');
+        } catch (error) {
+            console.error('Failed to update role:', error);
+            // Still update local state and continue
+            setRole(selectedRole);
+            router.replace('/(auth)/pair');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -158,14 +175,14 @@ export default function OnboardingScreen() {
                         <TouchableOpacity
                             style={[
                                 styles.continueButton,
-                                !selectedRole && styles.continueButtonDisabled
+                                (!selectedRole || isLoading) && styles.continueButtonDisabled
                             ]}
                             onPress={handleContinue}
-                            disabled={!selectedRole}
+                            disabled={!selectedRole || isLoading}
                             activeOpacity={0.8}
                         >
                             <LinearGradient
-                                colors={selectedRole
+                                colors={selectedRole && !isLoading
                                     ? [Colors.primary, '#FF8C61']
                                     : [Colors.surfaceElevated, Colors.surfaceElevated]
                                 }
@@ -173,12 +190,16 @@ export default function OnboardingScreen() {
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 1 }}
                             >
-                                <Text style={[
-                                    styles.buttonText,
-                                    !selectedRole && styles.buttonTextDisabled
-                                ]}>
-                                    开始使用
-                                </Text>
+                                {isLoading ? (
+                                    <ActivityIndicator color={Colors.textMuted} />
+                                ) : (
+                                    <Text style={[
+                                        styles.buttonText,
+                                        !selectedRole && styles.buttonTextDisabled
+                                    ]}>
+                                        开始使用
+                                    </Text>
+                                )}
                             </LinearGradient>
                         </TouchableOpacity>
 
