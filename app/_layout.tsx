@@ -98,9 +98,18 @@ export default function RootLayout() {
     const inSupporterGroup = segments[0] === '(supporter)';
 
     if (!isAuthenticated) {
-      // Not authenticated - must be in auth group
-      if (!inAuthGroup) {
-        router.replace(AUTH_DISABLED ? '/(auth)' : '/(auth)/login');
+      // Not authenticated - must be on login or register page (unless AUTH_DISABLED)
+      if (AUTH_DISABLED) {
+        // When auth is disabled, allow access to role selection
+        if (!inAuthGroup) {
+          router.replace('/(auth)');
+        }
+      } else {
+        // When auth is enabled, must be on login or register page
+        const inLoginOrRegister = segments[1] === 'login' || segments[1] === 'register';
+        if (!inLoginOrRegister) {
+          router.replace('/(auth)/login');
+        }
       }
       return;
     }

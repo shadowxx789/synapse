@@ -29,10 +29,19 @@ const MAX_CONTENT_WIDTH = 480;
 export default function RoleSelectionScreen() {
     const [selectedRole, setSelectedRole] = useState<UserRole>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const { user, setRole } = useUserStore();
+    const { user, setRole, isAuthenticated } = useUserStore();
     const router = useRouter();
     const { width: windowWidth } = useWindowDimensions();
     const contentWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH);
+
+    // If user is not authenticated and AUTH is enabled, show loading (route guard will redirect)
+    if (!isAuthenticated && !require('@/constants/FeatureFlags').AUTH_DISABLED) {
+        return (
+            <View style={styles.container}>
+                <ActivityIndicator color={Colors.primary} />
+            </View>
+        );
+    }
 
     const handleRoleSelect = (role: UserRole) => {
         if (Platform.OS !== 'web') {
