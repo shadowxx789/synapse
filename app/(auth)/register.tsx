@@ -17,6 +17,7 @@ import { useRouter, Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 import { AUTH_DISABLED } from '@/constants/FeatureFlags';
@@ -35,7 +36,7 @@ export default function RegisterScreen() {
     const [showPassword, setShowPassword] = useState(false);
 
     const router = useRouter();
-    const { setUser } = useUserStore();
+    const { setUser, pendingRole } = useUserStore();
     const { width: windowWidth } = useWindowDimensions();
     const contentWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH);
 
@@ -105,15 +106,20 @@ export default function RegisterScreen() {
                 id: user.id,
                 email: user.email,
                 name: user.name,
-                role: null,
+                role: pendingRole,
             });
 
             if (Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
 
-            // Navigate to role selection
-            router.replace('/(auth)');
+            // Navigate to pairing or main flow based on role
+            if (pendingRole) {
+                router.replace('/(auth)/pair');
+            } else {
+                // If no role selected, go back to role selection
+                router.replace('/(auth)');
+            }
         } catch (err) {
             const authError = err as AuthError;
             setError(authError.message);
@@ -196,9 +202,12 @@ export default function RegisterScreen() {
                                         style={styles.eyeButton}
                                         onPress={() => setShowPassword(!showPassword)}
                                     >
-                                        <Text style={styles.eyeIcon}>
-                                            {showPassword ? '🙈' : '👁️'}
-                                        </Text>
+                                        <MaterialCommunityIcons
+                                            name={showPassword ? 'eye-off' : 'eye'}
+                                            size={20}
+                                            color={Colors.textMuted}
+                                            style={styles.eyeIcon}
+                                        />
                                     </TouchableOpacity>
                                 </View>
                             </Animated.View>

@@ -19,10 +19,12 @@ interface UserState {
     isAuthenticated: boolean;
     isOnline: boolean;
     coupleSecret: string | null; // AES-GCM encryption key for couple messages
+    pendingRole: UserRole; // Role selected during onboarding, used for registration
 
     // Actions
     setUser: (user: User | null) => void;
     setRole: (role: UserRole) => void;
+    setPendingRole: (role: UserRole) => void;
     setPartnerId: (partnerId: string) => void;
     setPairingCode: (code: string) => void;
     setCoupleId: (coupleId: string) => void;
@@ -44,12 +46,15 @@ export const useUserStore = create<UserState>()(
             isAuthenticated: false,
             isOnline: true,
             coupleSecret: null,
+            pendingRole: null,
 
             setUser: (user) => set({ user, isAuthenticated: !!user }),
 
             setRole: (role) => set((state) => ({
                 user: state.user ? { ...state.user, role } : null
             })),
+
+            setPendingRole: (pendingRole) => set({ pendingRole }),
 
             setPartnerId: (partnerId) => set((state) => ({
                 user: state.user ? { ...state.user, partnerId } : null
@@ -71,10 +76,11 @@ export const useUserStore = create<UserState>()(
                 user: state.user ? { ...state.user, ...updates } : null
             })),
 
-            logout: () => set({ 
-                user: null, 
+            logout: () => set({
+                user: null,
                 isAuthenticated: false,
                 coupleSecret: null,
+                pendingRole: null,
             }),
 
             // Helper to check if user has completed all setup steps
@@ -102,6 +108,7 @@ export const useUserStore = create<UserState>()(
                 user: state.user,
                 isAuthenticated: state.isAuthenticated,
                 coupleSecret: state.coupleSecret,
+                pendingRole: state.pendingRole,
                 // Don't persist isOnline - always start as true
             }),
         }

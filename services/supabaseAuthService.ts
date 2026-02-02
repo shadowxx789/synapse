@@ -150,8 +150,8 @@ export const supabaseAuthService = {
         });
     },
 
-    getCurrentUser(): null {
-        return null;
+    async getCurrentUser(): Promise<AuthUser | null> {
+        return this.getCurrentUserProfile();
     },
 
     async getCurrentUserProfile(): Promise<AuthUser | null> {

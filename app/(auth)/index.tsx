@@ -17,6 +17,7 @@ import Animated, {
     FadeInDown,
     FadeInUp,
 } from 'react-native-reanimated';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useUserStore, UserRole } from '@/stores/userStore';
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
@@ -25,7 +26,7 @@ const MAX_CONTENT_WIDTH = 480;
 
 export default function OnboardingScreen() {
     const [selectedRole, setSelectedRole] = useState<UserRole>(null);
-    const { setUser, setRole } = useUserStore();
+    const { setPendingRole } = useUserStore();
     const router = useRouter();
     const { width: windowWidth } = useWindowDimensions();
     const contentWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH);
@@ -44,20 +45,11 @@ export default function OnboardingScreen() {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
 
-        // Create demo user
-        setUser({
-            id: Date.now().toString(),
-            email: 'demo@synapse.app',
-            name: selectedRole === 'executor' ? '执行者' : '支持者',
-            role: selectedRole,
-        });
+        // Save selected role for registration
+        setPendingRole(selectedRole);
 
-        // Navigate to appropriate flow
-        if (selectedRole === 'executor') {
-            router.replace('/(executor)');
-        } else {
-            router.replace('/(supporter)');
-        }
+        // Navigate to registration
+        router.push('/(auth)/register');
     };
 
     return (
@@ -73,7 +65,9 @@ export default function OnboardingScreen() {
                         entering={FadeInDown.delay(200).springify()}
                         style={styles.header}
                     >
-                        <Text style={styles.logo}>⚡ 同频</Text>
+                        <Text style={styles.logo}>
+                            <MaterialCommunityIcons name="lightning-bolt" size={FontSizes.hero} color={Colors.textPrimary} /> 同频
+                        </Text>
                         <Text style={styles.subtitle}>Synapse</Text>
                         <Text style={styles.tagline}>
                             让 ADHD 伴侣同频协作
@@ -101,7 +95,7 @@ export default function OnboardingScreen() {
                                 activeOpacity={0.8}
                             >
                                 <View style={styles.roleIconContainer}>
-                                    <Text style={styles.roleIcon}>🏎️</Text>
+                                    <MaterialCommunityIcons name="car-sports" size={28} color={Colors.executor.primary} />
                                 </View>
                                 <View style={styles.roleContent}>
                                     <Text style={[
@@ -134,7 +128,7 @@ export default function OnboardingScreen() {
                                 activeOpacity={0.8}
                             >
                                 <View style={styles.roleIconContainer}>
-                                    <Text style={styles.roleIcon}>🧭</Text>
+                                    <MaterialCommunityIcons name="compass" size={28} color={Colors.supporter.primary} />
                                 </View>
                                 <View style={styles.roleContent}>
                                     <Text style={[
