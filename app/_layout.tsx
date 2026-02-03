@@ -123,14 +123,18 @@ export default function RootLayout() {
       return;
     }
 
+    // 用户有角色但未配对 - 如果在 auth 组内且不在 pair 页面，引导去配对
+    // 但不强制，允许用户通过"稍后配对"跳过
     if (!user?.partnerId && !AUTH_DISABLED) {
-      // Has role but not paired - go to pairing
-      if (inAuthGroup && segments[1] !== 'pair') {
-        router.replace('/(auth)/pair');
-      } else if (!inAuthGroup) {
+      // 只有在 auth 组内且不在 pair 页面时，才引导去配对页面
+      if (inAuthGroup && segments[1] !== 'pair' && !segments[1]) {
         router.replace('/(auth)/pair');
       }
-      return;
+      // 如果用户已经在主应用组（executor/supporter），允许继续使用
+      // 不再强制重定向回配对页面
+      if (inAuthGroup && segments[1] === 'pair') {
+        return; // 用户在配对页面，不做任何操作
+      }
     }
 
     if (AUTH_DISABLED && inAuthGroup && (segments[1] === 'login' || segments[1] === 'register')) {

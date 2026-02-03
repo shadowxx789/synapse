@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import Animated, { FadeInDown, FadeInUp, FadeIn } from 'react-native-reanimated';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 import { useUserStore } from '@/stores/userStore';
@@ -31,7 +32,7 @@ export default function PairScreen() {
     const [myCode, setMyCode] = useState<string>('');
     const [inputCode, setInputCode] = useState<string[]>(Array(PAIRING_CODE_LENGTH).fill(''));
     const [isLoading, setIsLoading] = useState(false);
-    const [isGeneratingCode, setIsGeneratingCode] = useState(true);
+    const [isGeneratingCode, setIsGeneratingCode] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
@@ -41,18 +42,28 @@ export default function PairScreen() {
     const { width: windowWidth } = useWindowDimensions();
     const contentWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH);
 
-    // Generate pairing code on mount
+    // Generate pairing code when user is loaded
     useEffect(() => {
-        generatePairingCode();
-    }, []);
+        if (user?.id && !myCode) {
+            generatePairingCode();
+        }
+    }, [user?.id]);
 
     const generatePairingCode = async () => {
-        if (!user?.id) return;
+        if (!user?.id) {
+            setIsGeneratingCode(false);
+            return;
+        }
 
         setIsGeneratingCode(true);
         try {
             const code = userService.generatePairingCode();
-            await userService.update(user.id, { pairingCode: code });
+            // 添加过期时间
+            const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            await userService.update(user.id, {
+                pairingCode: code,
+                pairingCodeExpiresAt: expiresAt
+            });
             setMyCode(code);
             updateUser({ pairingCode: code });
         } catch (err) {
@@ -217,6 +228,20 @@ export default function PairScreen() {
         return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
     };
 
+    // 用户信息未加载时显示加载状态
+    if (!user) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <Text style={{ color: Colors.textSecondary, marginTop: 16 }}>
+                        加载中...
+                    </Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" />
@@ -231,7 +256,7 @@ export default function PairScreen() {
                         entering={FadeInDown.delay(200).springify()}
                         style={styles.header}
                     >
-                        <Text style={styles.emoji}>🔗</Text>
+                        <MaterialCommunityIcons name="link-variant" size={56} color={Colors.primary} style={styles.emoji} />
                         <Text style={styles.title}>连接伴侣</Text>
                         <Text style={styles.subtitle}>
                             {user?.role === 'executor'
@@ -286,7 +311,12 @@ export default function PairScreen() {
                                     onPress={handleCopyCode}
                                     disabled={isGeneratingCode}
                                 >
-                                    <Text style={styles.actionIcon}>{copied ? '✓' : '📋'}</Text>
+                                    <MaterialCommunityIcons
+                                        name={copied ? 'check' : 'content-copy'}
+                                        size={24}
+                                        color={Colors.textSecondary}
+                                        style={styles.actionIcon}
+                                    />
                                     <Text style={styles.actionText}>{copied ? '已复制' : '复制'}</Text>
                                 </TouchableOpacity>
 
@@ -295,7 +325,12 @@ export default function PairScreen() {
                                     onPress={handleShareCode}
                                     disabled={isGeneratingCode}
                                 >
-                                    <Text style={styles.actionIcon}>📤</Text>
+                                    <MaterialCommunityIcons
+                                        name="share-variant"
+                                        size={24}
+                                        color={Colors.textSecondary}
+                                        style={styles.actionIcon}
+                                    />
                                     <Text style={styles.actionText}>分享</Text>
                                 </TouchableOpacity>
 
@@ -304,7 +339,12 @@ export default function PairScreen() {
                                     onPress={generatePairingCode}
                                     disabled={isGeneratingCode}
                                 >
-                                    <Text style={styles.actionIcon}>🔄</Text>
+                                    <MaterialCommunityIcons
+                                        name="refresh"
+                                        size={24}
+                                        color={Colors.textSecondary}
+                                        style={styles.actionIcon}
+                                    />
                                     <Text style={styles.actionText}>刷新</Text>
                                 </TouchableOpacity>
                             </View>
@@ -367,7 +407,9 @@ export default function PairScreen() {
                                     {isLoading ? (
                                         <ActivityIndicator color={Colors.textMuted} />
                                     ) : (
-                                        <Text style={styles.buttonText}>🔗 连接</Text>
+                                        <Text style={styles.buttonText}>
+                                            <MaterialCommunityIcons name="link-variant" size={FontSizes.lg} color="#FFF" /> 连接
+                                        </Text>
                                     )}
                                 </LinearGradient>
                             </TouchableOpacity>
