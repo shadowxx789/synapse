@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -13,46 +13,50 @@ import {
     Modal,
     TextInput,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeInUp, SlideInDown } from 'react-native-reanimated';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import TaskCard from '@/components/TaskCard';
 import VisualTimer from '@/components/VisualTimer';
 import DopaminePop from '@/components/DopaminePop';
 import UrgentRecharge from '@/components/UrgentRecharge';
 import AISettings from '@/components/AISettings';
+import TaskItemSkeleton from '@/components/TaskItemSkeleton';
 import { useTaskStore, Task } from '@/stores/taskStore';
 import { useEnergyStore } from '@/stores/energyStore';
 import { useAISettingsStore } from '@/stores/aiSettingsStore';
+import { useUserStore } from '@/stores/userStore';
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 import { shredTask } from '@/services/ai';
 
 const MAX_CONTENT_WIDTH = 480;
+const DEMO_CREATOR_ID = 'demo-supporter';
+const DEMO_EXECUTOR_ID = 'demo-executor';
 
 // Demo tasks for testing
 const DEMO_TASKS: Task[] = [
     {
         id: '1',
-        title: '整理书桌',
+        title: '鏁寸悊涔︽',
         description: '把书桌整理干净，让工作环境更舒适',
-        creatorId: 'supporter-1',
-        executorId: 'executor-1',
+        creatorId: DEMO_CREATOR_ID,
+        executorId: DEMO_EXECUTOR_ID,
         visualTimerMinutes: 5,
         status: 'pending',
         createdAt: new Date(),
         subtasks: [
             { id: 's1', title: '把书桌上的杂物放到一边', estimatedMinutes: 1, order: 1 },
             { id: 's2', title: '用湿布擦拭桌面', estimatedMinutes: 1, order: 2 },
-            { id: 's3', title: '整理文具放回笔筒', estimatedMinutes: 1, order: 3 },
+            { id: 's3', title: '鏁寸悊鏂囧叿鏀惧洖绗旂瓛', estimatedMinutes: 1, order: 3 },
             { id: 's4', title: '把书按大小排列整齐', estimatedMinutes: 2, order: 4 },
         ].map((s, i) => ({
             ...s,
             id: `subtask-1-${i}`,
             parentTaskId: '1',
-            creatorId: 'supporter-1',
-            executorId: 'executor-1',
+            creatorId: DEMO_CREATOR_ID,
+            executorId: DEMO_EXECUTOR_ID,
             visualTimerMinutes: s.estimatedMinutes,
             status: 'pending' as const,
             createdAt: new Date(),
@@ -60,23 +64,23 @@ const DEMO_TASKS: Task[] = [
     },
     {
         id: '2',
-        title: '洗碗',
-        description: '把水池里的碗洗干净',
-        creatorId: 'supporter-1',
-        executorId: 'executor-1',
+        title: '娲楃',
+        description: '鎶婃按姹犻噷鐨勭娲楀共鍑€',
+        creatorId: DEMO_CREATOR_ID,
+        executorId: DEMO_EXECUTOR_ID,
         visualTimerMinutes: 10,
         status: 'pending',
         createdAt: new Date(),
         subtasks: [
-            { id: 's1', title: '把碗泡在水里', estimatedMinutes: 2, order: 1 },
-            { id: 's2', title: '用洗洁精清洗', estimatedMinutes: 5, order: 2 },
+            { id: 's1', title: '鎶婄娉″湪姘撮噷', estimatedMinutes: 2, order: 1 },
+            { id: 's2', title: '鐢ㄦ礂娲佺簿娓呮礂', estimatedMinutes: 5, order: 2 },
             { id: 's3', title: '冲洗干净放到架子上', estimatedMinutes: 3, order: 3 },
         ].map((s, i) => ({
             ...s,
             id: `subtask-2-${i}`,
             parentTaskId: '2',
-            creatorId: 'supporter-1',
-            executorId: 'executor-1',
+            creatorId: DEMO_CREATOR_ID,
+            executorId: DEMO_EXECUTOR_ID,
             visualTimerMinutes: s.estimatedMinutes,
             status: 'pending' as const,
             createdAt: new Date(),
@@ -84,24 +88,24 @@ const DEMO_TASKS: Task[] = [
     },
     {
         id: '3',
-        title: '运动15分钟',
+        title: '杩愬姩15鍒嗛挓',
         description: '做一些简单的运动，保持身体健康',
-        creatorId: 'supporter-1',
-        executorId: 'executor-1',
+        creatorId: DEMO_CREATOR_ID,
+        executorId: DEMO_EXECUTOR_ID,
         visualTimerMinutes: 15,
         status: 'pending',
         createdAt: new Date(),
         subtasks: [
-            { id: 's1', title: '热身拉伸', estimatedMinutes: 3, order: 1 },
-            { id: 's2', title: '做20个深蹲', estimatedMinutes: 4, order: 2 },
-            { id: 's3', title: '做10个俯卧撑', estimatedMinutes: 4, order: 3 },
-            { id: 's4', title: '放松拉伸', estimatedMinutes: 4, order: 4 },
+            { id: 's1', title: '鐑韩鎷変几', estimatedMinutes: 3, order: 1 },
+            { id: 's2', title: '做 20 个深蹲', estimatedMinutes: 4, order: 2 },
+            { id: 's3', title: '鍋?0涓刊鍗ф拺', estimatedMinutes: 4, order: 3 },
+            { id: 's4', title: '鏀炬澗鎷変几', estimatedMinutes: 4, order: 4 },
         ].map((s, i) => ({
             ...s,
             id: `subtask-3-${i}`,
             parentTaskId: '3',
-            creatorId: 'supporter-1',
-            executorId: 'executor-1',
+            creatorId: DEMO_CREATOR_ID,
+            executorId: DEMO_EXECUTOR_ID,
             visualTimerMinutes: s.estimatedMinutes,
             status: 'pending' as const,
             createdAt: new Date(),
@@ -109,15 +113,35 @@ const DEMO_TASKS: Task[] = [
     },
 ];
 
+const buildDemoTasks = (executorId: string, creatorId: string): Task[] =>
+    DEMO_TASKS.map((task, taskIndex) => {
+        const demoTaskId = `demo-task-${taskIndex + 1}`;
+        return {
+            ...task,
+            id: demoTaskId,
+            creatorId,
+            executorId,
+            createdAt: new Date(),
+            subtasks: task.subtasks?.map((subtask, subtaskIndex) => ({
+                ...subtask,
+                id: `${demoTaskId}-subtask-${subtaskIndex + 1}`,
+                parentTaskId: demoTaskId,
+                creatorId,
+                executorId,
+                createdAt: new Date(),
+            })),
+        };
+    });
+
 type ViewMode = 'list' | 'setup' | 'execution';
 
 export default function ExecutorHomeScreen() {
-    const router = useRouter();
     const { width: windowWidth } = useWindowDimensions();
     const contentWidth = Math.min(windowWidth, MAX_CONTENT_WIDTH);
 
     const {
         tasks,
+        isSyncing,
         currentTask,
         currentSubtaskIndex,
         setTasks,
@@ -128,6 +152,7 @@ export default function ExecutorHomeScreen() {
         removeTask,
     } = useTaskStore();
     const { totalPoints } = useEnergyStore();
+    const user = useUserStore((state) => state.user);
 
     // View mode: list -> setup -> execution
     const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -147,6 +172,7 @@ export default function ExecutorHomeScreen() {
     const [newTaskMinutes, setNewTaskMinutes] = useState(5);
 
     const { apiKey: aiApiKey } = useAISettingsStore();
+    const isLoadingTasks = isSyncing && tasks.length === 0;
 
     const scaleSubtasksToTotal = (subtasks: Task[] | undefined, targetMinutes: number): Task[] | undefined => {
         if (!subtasks || subtasks.length === 0) return subtasks;
@@ -176,17 +202,16 @@ export default function ExecutorHomeScreen() {
         }));
     };
 
-    // Load demo tasks only on first mount (not on every focus)
-    const hasInitialized = useRef(false);
-    
-    useEffect(() => {
-        if (!hasInitialized.current) {
-            hasInitialized.current = true;
-            if (tasks.length === 0) {
-                setTasks(DEMO_TASKS);
-            }
+    const loadDemoTasks = () => {
+        if (!user?.id) {
+            Alert.alert('鎻愮ず', '鐢ㄦ埛淇℃伅鏈姞杞斤紝鏆傛椂鏃犳硶鍔犺浇绀轰緥浠诲姟');
+            return;
         }
-    }, []);
+
+        const creatorId = user.partnerId ?? user.id;
+        setTasks(buildDemoTasks(user.id, creatorId));
+        setViewMode('list');
+    };
 
     // Check if supporter needs recharge
     useEffect(() => {
@@ -318,12 +343,12 @@ export default function ExecutorHomeScreen() {
         }
         Alert.alert(
             '需要帮助',
-            '选择你需要的帮助类型',
+            '閫夋嫨浣犻渶瑕佺殑甯姪绫诲瀷',
             [
                 { text: '找不到东西', onPress: () => sendHelpRequest('find_item') },
                 { text: '任务太难了', onPress: () => sendHelpRequest('too_hard') },
-                { text: '没有动力', onPress: () => sendHelpRequest('no_motivation') },
-                { text: '取消', style: 'cancel' },
+                { text: '娌℃湁鍔ㄥ姏', onPress: () => sendHelpRequest('no_motivation') },
+                { text: '鍙栨秷', style: 'cancel' },
             ]
         );
     };
@@ -332,10 +357,10 @@ export default function ExecutorHomeScreen() {
         const messages: Record<string, string> = {
             find_item: '执行者需要帮忙找东西！',
             too_hard: '执行者觉得当前任务太难，需要进一步拆解',
-            no_motivation: '执行者需要一些鼓励和支持',
+            no_motivation: '鎵ц鑰呴渶瑕佷竴浜涢紦鍔卞拰鏀寔',
         };
         Alert.alert('已发送', `支持者会收到通知：\n\n"${messages[type]}"`, [
-            { text: '好的' },
+            { text: '濂界殑' },
         ]);
     };
 
@@ -351,7 +376,7 @@ export default function ExecutorHomeScreen() {
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
-        return `${mins}分${secs}秒`;
+        return `${mins}分 ${secs}秒`;
     };
 
     const adjustTime = (delta: number) => {
@@ -371,15 +396,15 @@ export default function ExecutorHomeScreen() {
         }
 
         Alert.alert(
-            '删除任务',
+            '鍒犻櫎浠诲姟',
             `确定要删除「${taskTitle}」吗？`,
             [
                 {
-                    text: '取消',
+                    text: '鍙栨秷',
                     style: 'cancel',
                 },
                 {
-                    text: '删除',
+                    text: '鍒犻櫎',
                     style: 'destructive',
                     onPress: () => {
                         removeTask(taskId);
@@ -396,9 +421,17 @@ export default function ExecutorHomeScreen() {
             return;
         }
 
+        if (!user?.id) {
+            Alert.alert('提示', '用户信息未加载，请稍后重试');
+            return;
+        }
+
         if (Platform.OS !== 'web') {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         }
+
+        const creatorId = user.id;
+        const executorId = user.id;
 
         try {
             // Use AI to shred the task into subtasks
@@ -409,20 +442,20 @@ export default function ExecutorHomeScreen() {
             const newTask: Task = {
                 id: taskId,
                 title: newTaskTitle,
-                description: `执行者自己创建的任务`,
-                creatorId: 'executor-1',
-                executorId: 'executor-1',
+                description: '执行者自己创建的任务',
+                creatorId,
+                executorId,
                 visualTimerMinutes: newTaskMinutes,
                 status: 'pending',
                 createdAt: new Date(),
-                subtasks: shredResult.subtasks.map((s, i) => ({
-                    id: `subtask-${taskTimestamp}-${i}`,
+                subtasks: shredResult.subtasks.map((subtask, index) => ({
+                    id: `subtask-${taskTimestamp}-${index}`,
                     parentTaskId: taskId,
-                    title: s.title,
-                    creatorId: 'executor-1',
-                    executorId: 'executor-1',
-                    visualTimerMinutes: Math.max(1, Math.round(Number(s.estimatedMinutes) || 1)),
-                    status: 'pending' as const,
+                    title: subtask.title,
+                    creatorId,
+                    executorId,
+                    visualTimerMinutes: Math.max(1, Math.round(Number(subtask.estimatedMinutes) || 1)),
+                    status: 'pending',
                     createdAt: new Date(),
                 })),
             };
@@ -438,21 +471,21 @@ export default function ExecutorHomeScreen() {
 
             Alert.alert(
                 '✅ 任务已创建',
-                `「${newTaskTitle}」已添加到任务列表，共${shredResult.subtasks.length}个步骤`,
+                `「${newTaskTitle}」已添加到任务列表，共 ${shredResult.subtasks.length} 个步骤`,
                 [{ text: '好的' }]
             );
         } catch (error) {
             console.error('Create task failed:', error);
-            
+
             // Fallback: create simple task without AI shredding
             const taskTimestamp = Date.now();
             const taskId = `task-${taskTimestamp}`;
             const newTask: Task = {
                 id: taskId,
                 title: newTaskTitle,
-                description: `执行者自己创建的任务`,
-                creatorId: 'executor-1',
-                executorId: 'executor-1',
+                description: '执行者自己创建的任务',
+                creatorId,
+                executorId,
                 visualTimerMinutes: newTaskMinutes,
                 status: 'pending',
                 createdAt: new Date(),
@@ -461,10 +494,10 @@ export default function ExecutorHomeScreen() {
                         id: `subtask-${taskTimestamp}-0`,
                         parentTaskId: taskId,
                         title: newTaskTitle,
-                        creatorId: 'executor-1',
-                        executorId: 'executor-1',
+                        creatorId,
+                        executorId,
                         visualTimerMinutes: Math.max(1, Math.round(Number(newTaskMinutes) || 1)),
-                        status: 'pending' as const,
+                        status: 'pending',
                         createdAt: new Date(),
                     },
                 ],
@@ -481,7 +514,7 @@ export default function ExecutorHomeScreen() {
 
             Alert.alert(
                 '✅ 任务已创建',
-                `「${newTaskTitle}」已添加到任务列表（未使用AI拆解）`,
+                `「${newTaskTitle}」已添加到任务列表（未使用 AI 拆解）`,
                 [{ text: '好的' }]
             );
         }
@@ -498,35 +531,41 @@ export default function ExecutorHomeScreen() {
                 >
                     <View style={[styles.content, { width: contentWidth }]}>
                         <View style={styles.listHeader}>
-                            <Text style={styles.listTitle}>待办任务</Text>
+                            <Text style={styles.listTitle}>寰呭姙浠诲姟</Text>
                             <View style={styles.headerRight}>
                                 <TouchableOpacity
                                     style={styles.createButton}
                                     onPress={() => setShowCreateTask(true)}
                                 >
-                                    <Text style={styles.createButtonText}>➕</Text>
+                                    <MaterialCommunityIcons name="plus" size={24} color={Colors.primary} />
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[styles.settingsButton, !aiApiKey && styles.settingsButtonWarning]}
                                     onPress={() => setShowAISettings(true)}
                                 >
-                                    <Text style={styles.settingsIcon}>⚙️</Text>
+                                    <MaterialCommunityIcons name="cog-outline" size={22} color={Colors.textSecondary} />
                                 </TouchableOpacity>
                             </View>
                         </View>
 
-                        {tasks.length === 0 ? (
+                        {isLoadingTasks ? (
+                            <View style={styles.taskList}>
+                                {Array.from({ length: 3 }).map((_, index) => (
+                                    <TaskItemSkeleton key={`task-skeleton-${index}`} />
+                                ))}
+                            </View>
+                        ) : tasks.length === 0 ? (
                             <View style={styles.emptyState}>
-                                <Text style={styles.emptyIcon}>📭</Text>
-                                <Text style={styles.emptyTitle}>暂无任务</Text>
+                                <MaterialCommunityIcons name="inbox-outline" size={64} color={Colors.textMuted} />
+                                <Text style={styles.emptyTitle}>鏆傛棤浠诲姟</Text>
                                 <Text style={styles.emptySubtitle}>
-                                    等待支持者分配新任务...
+                                    绛夊緟鏀寔鑰呭垎閰嶆柊浠诲姟...
                                 </Text>
                                 <TouchableOpacity
                                     style={styles.demoButton}
-                                    onPress={() => setTasks(DEMO_TASKS)}
+                                    onPress={loadDemoTasks}
                                 >
-                                    <Text style={styles.demoButtonText}>加载示例任务</Text>
+                                    <Text style={styles.demoButtonText}>鍔犺浇绀轰緥浠诲姟</Text>
                                 </TouchableOpacity>
                             </View>
                         ) : (
@@ -543,7 +582,7 @@ export default function ExecutorHomeScreen() {
                                                 activeOpacity={0.8}
                                             >
                                                 <View style={styles.taskItemLeft}>
-                                                    <Text style={styles.taskItemIcon}>📋</Text>
+                                                    <MaterialCommunityIcons name="clipboard-text-outline" size={24} color={Colors.executor.primary} />
                                                 </View>
                                                 <View style={styles.taskItemContent}>
                                                     <Text style={styles.taskItemTitle}>{task.title}</Text>
@@ -553,22 +592,28 @@ export default function ExecutorHomeScreen() {
                                                         </Text>
                                                     )}
                                                     <View style={styles.taskItemMeta}>
-                                                        <Text style={styles.taskItemTime}>
-                                                            ⏱ {task.visualTimerMinutes}分钟
-                                                        </Text>
-                                                        <Text style={styles.taskItemSteps}>
-                                                            📝 {task.subtasks?.length || 0}个步骤
-                                                        </Text>
+                                                        <View style={styles.metaItem}>
+                                                            <MaterialCommunityIcons name="timer-outline" size={14} color={Colors.textMuted} />
+                                                            <Text style={styles.taskItemTime}>
+                                                                {task.visualTimerMinutes}鍒嗛挓
+                                                            </Text>
+                                                        </View>
+                                                        <View style={styles.metaItem}>
+                                                            <MaterialCommunityIcons name="format-list-checks" size={14} color={Colors.textMuted} />
+                                                            <Text style={styles.taskItemSteps}>
+                                                                {task.subtasks?.length || 0}涓楠?
+                                                            </Text>
+                                                        </View>
                                                     </View>
                                                 </View>
-                                                <Text style={styles.taskItemArrow}>›</Text>
+                                                <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.textMuted} />
                                             </TouchableOpacity>
                                             <TouchableOpacity
                                                 style={styles.deleteButton}
                                                 onPress={() => handleDeleteTask(task.id, task.title)}
                                                 activeOpacity={0.7}
                                             >
-                                                <Text style={styles.deleteButtonText}>🗑️</Text>
+                                                <MaterialCommunityIcons name="trash-can-outline" size={20} color="#FFF" />
                                             </TouchableOpacity>
                                         </View>
                                     </Animated.View>
@@ -597,12 +642,12 @@ export default function ExecutorHomeScreen() {
                         >
                             <Text style={styles.modalTitle}>创建新任务</Text>
                             <Text style={styles.modalSubtitle}>
-                                AI 会自动帮你拆解成小步骤
+                                AI 浼氳嚜鍔ㄥ府浣犳媶瑙ｆ垚灏忔楠?
                             </Text>
 
                             <TextInput
                                 style={styles.modalInput}
-                                placeholder="输入任务名称，例如：整理书桌"
+                                placeholder="杈撳叆浠诲姟鍚嶇О锛屼緥濡傦細鏁寸悊涔︽"
                                 placeholderTextColor={Colors.textMuted}
                                 value={newTaskTitle}
                                 onChangeText={setNewTaskTitle}
@@ -611,7 +656,7 @@ export default function ExecutorHomeScreen() {
                             />
 
                             <View style={styles.modalTimeSection}>
-                                <Text style={styles.modalTimeLabel}>预计时长</Text>
+                                <Text style={styles.modalTimeLabel}>棰勮鏃堕暱</Text>
                                 <View style={styles.modalTimeControls}>
                                     <TouchableOpacity
                                         style={styles.modalTimeButton}
@@ -619,7 +664,7 @@ export default function ExecutorHomeScreen() {
                                     >
                                         <Text style={styles.modalTimeButtonText}>-</Text>
                                     </TouchableOpacity>
-                                    <Text style={styles.modalTimeValue}>{newTaskMinutes}分钟</Text>
+                                    <Text style={styles.modalTimeValue}>{newTaskMinutes}鍒嗛挓</Text>
                                     <TouchableOpacity
                                         style={styles.modalTimeButton}
                                         onPress={() => setNewTaskMinutes(Math.min(60, newTaskMinutes + 1))}
@@ -638,7 +683,7 @@ export default function ExecutorHomeScreen() {
                                         setNewTaskMinutes(5);
                                     }}
                                 >
-                                    <Text style={styles.modalCancelText}>取消</Text>
+                                    <Text style={styles.modalCancelText}>鍙栨秷</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[
@@ -652,7 +697,7 @@ export default function ExecutorHomeScreen() {
                                         colors={[Colors.primary, '#FF8C61']}
                                         style={styles.modalCreateGradient}
                                     >
-                                        <Text style={styles.modalCreateText}>✨ 创建</Text>
+                                        <Text style={styles.modalCreateText}>鉁?鍒涘缓</Text>
                                     </LinearGradient>
                                 </TouchableOpacity>
                             </View>
@@ -678,12 +723,15 @@ export default function ExecutorHomeScreen() {
                             style={styles.backButton}
                             onPress={handleBackToList}
                         >
-                            <Text style={styles.backButtonText}>‹ 返回</Text>
+                            <View style={styles.backButtonContent}>
+                                <MaterialCommunityIcons name="chevron-left" size={24} color={Colors.primary} />
+                                <Text style={styles.backButtonText}>杩斿洖</Text>
+                            </View>
                         </TouchableOpacity>
 
                         {/* Task info */}
                         <Animated.View entering={FadeIn} style={styles.setupHeader}>
-                            <Text style={styles.setupIcon}>🎯</Text>
+                            <MaterialCommunityIcons name="target" size={64} color={Colors.primary} />
                             <Text style={styles.setupTitle}>{selectedTask.title}</Text>
                             {selectedTask.description && (
                                 <Text style={styles.setupDesc}>{selectedTask.description}</Text>
@@ -692,7 +740,7 @@ export default function ExecutorHomeScreen() {
 
                         {/* Time selector */}
                         <Animated.View entering={FadeInUp.delay(200)} style={styles.timeSelector}>
-                            <Text style={styles.timeSelectorLabel}>设置专注时间</Text>
+                            <Text style={styles.timeSelectorLabel}>璁剧疆涓撴敞鏃堕棿</Text>
                             <View style={styles.timeControls}>
                                 <TouchableOpacity
                                     style={styles.timeButton}
@@ -708,7 +756,7 @@ export default function ExecutorHomeScreen() {
                                 </TouchableOpacity>
                                 <View style={styles.timeDisplay}>
                                     <Text style={styles.timeValue}>{customMinutes}</Text>
-                                    <Text style={styles.timeUnit}>分钟</Text>
+                                    <Text style={styles.timeUnit}>鍒嗛挓</Text>
                                 </View>
                                 <TouchableOpacity
                                     style={styles.timeButton}
@@ -727,7 +775,7 @@ export default function ExecutorHomeScreen() {
 
                         {/* Subtasks preview */}
                         <Animated.View entering={FadeInUp.delay(300)} style={styles.subtasksPreview}>
-                            <Text style={styles.subtasksLabel}>任务步骤</Text>
+                            <Text style={styles.subtasksLabel}>浠诲姟姝ラ</Text>
                             {selectedTask.subtasks?.map((subtask, index) => (
                                 <View key={subtask.id} style={styles.subtaskItem}>
                                     <View style={styles.subtaskNumber}>
@@ -751,7 +799,10 @@ export default function ExecutorHomeScreen() {
                                     start={{ x: 0, y: 0 }}
                                     end={{ x: 1, y: 1 }}
                                 >
-                                    <Text style={styles.startButtonText}>▶ 开始专注</Text>
+                                    <View style={styles.startButtonContent}>
+                                        <MaterialCommunityIcons name="play" size={24} color="#FFF" />
+                                        <Text style={styles.startButtonText}>开始专注</Text>
+                                    </View>
                                 </LinearGradient>
                             </TouchableOpacity>
                         </Animated.View>
@@ -770,10 +821,10 @@ export default function ExecutorHomeScreen() {
                     entering={FadeIn}
                     style={styles.completeState}
                 >
-                    <Text style={styles.completeIcon}>🎉</Text>
-                    <Text style={styles.completeTitle}>太棒了！</Text>
+                    <MaterialCommunityIcons name="party-popper" size={80} color={Colors.success} />
+                    <Text style={styles.completeTitle}>澶浜嗭紒</Text>
                     <Text style={styles.completeSubtitle}>
-                        你完成了「{currentTask.title}」的所有步骤！
+                        {`你完成了「${currentTask.title}」的所有步骤！`}
                     </Text>
 
                     {/* Stats */}
@@ -784,7 +835,7 @@ export default function ExecutorHomeScreen() {
                         <View style={styles.statRow}>
                             <View style={styles.statItem}>
                                 <Text style={styles.statValue}>{completedCount}</Text>
-                                <Text style={styles.statLabel}>完成步骤</Text>
+                                <Text style={styles.statLabel}>瀹屾垚姝ラ</Text>
                             </View>
                             <View style={styles.statDivider} />
                             <View style={styles.statItem}>
@@ -799,9 +850,9 @@ export default function ExecutorHomeScreen() {
                         entering={FadeInUp.delay(500)}
                         style={styles.encouragementCard}
                     >
-                        <Text style={styles.encouragementEmoji}>💪</Text>
+                        <MaterialCommunityIcons name="arm-flex" size={24} color={Colors.executor.primary} style={styles.encouragementIcon} />
                         <Text style={styles.encouragementText}>
-                            每完成一个任务，你都在变得更好！
+                            姣忓畬鎴愪竴涓换鍔★紝浣犻兘鍦ㄥ彉寰楁洿濂斤紒
                         </Text>
                     </Animated.View>
 
@@ -813,7 +864,10 @@ export default function ExecutorHomeScreen() {
                             colors={[Colors.primary, '#FF8C61']}
                             style={styles.restartGradient}
                         >
-                            <Text style={styles.restartText}>📋 返回任务列表</Text>
+                            <View style={styles.restartButtonContent}>
+                                <MaterialCommunityIcons name="clipboard-list-outline" size={20} color="#FFF" />
+                                <Text style={styles.restartText}>杩斿洖浠诲姟鍒楄〃</Text>
+                            </View>
                         </LinearGradient>
                     </TouchableOpacity>
                 </Animated.View>
@@ -829,11 +883,12 @@ export default function ExecutorHomeScreen() {
 
                 {/* Header */}
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={handleBackToList}>
-                        <Text style={styles.backText}>‹ 退出</Text>
+                    <TouchableOpacity style={styles.headerBackButton} onPress={handleBackToList}>
+                        <MaterialCommunityIcons name="chevron-left" size={24} color={Colors.primary} />
+                        <Text style={styles.backText}>退出</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => {
-                        Alert.alert('当前任务', currentTask.title, [{ text: '继续专注' }]);
+                        Alert.alert('褰撳墠浠诲姟', currentTask.title, [{ text: '缁х画涓撴敞' }]);
                     }}>
                         <Text style={styles.parentTask}>
                             {currentTask.title}
@@ -844,13 +899,13 @@ export default function ExecutorHomeScreen() {
                             style={[styles.settingsButton, !aiApiKey && styles.settingsButtonWarning]}
                             onPress={() => setShowAISettings(true)}
                         >
-                            <Text style={styles.settingsIcon}>⚙️</Text>
+                            <MaterialCommunityIcons name="cog-outline" size={22} color={Colors.textSecondary} />
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={styles.quickHelp}
                             onPress={handleNeedHelp}
                         >
-                            <Text style={styles.helpIcon}>?</Text>
+                            <MaterialCommunityIcons name="help-circle-outline" size={22} color={Colors.executor.primary} />
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -876,7 +931,8 @@ export default function ExecutorHomeScreen() {
 
                         {isPaused && (
                             <View style={styles.pausedBadge}>
-                                <Text style={styles.pausedText}>⏸ 已暂停</Text>
+                                <MaterialCommunityIcons name="pause" size={16} color={Colors.textPrimary} />
+                                <Text style={styles.pausedText}>已暂停</Text>
                             </View>
                         )}
 
@@ -886,7 +942,11 @@ export default function ExecutorHomeScreen() {
                             onPress={handlePauseToggle}
                             activeOpacity={0.7}
                         >
-                            <Text style={styles.pauseIcon}>{isPaused ? '▶' : '⏸'}</Text>
+                            <MaterialCommunityIcons 
+                                name={isPaused ? 'play' : 'pause'} 
+                                size={28} 
+                                color={Colors.executor.primary} 
+                            />
                         </TouchableOpacity>
                     </View>
 
@@ -915,7 +975,7 @@ export default function ExecutorHomeScreen() {
                         setShowUrgentRecharge(false);
                     }}
                     supporterName="支持者"
-                    reward={{ title: '一次按摩', icon: '💆' }}
+                    reward={{ title: '一次按摩', iconName: 'spa' }}
                 />
 
                 {/* AI Settings Modal */}
@@ -932,19 +992,16 @@ export default function ExecutorHomeScreen() {
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" />
             <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>📭</Text>
-                <Text style={styles.emptyTitle}>暂无任务</Text>
+                <MaterialCommunityIcons name="inbox-outline" size={64} color={Colors.textMuted} />
+                <Text style={styles.emptyTitle}>鏆傛棤浠诲姟</Text>
                 <Text style={styles.emptySubtitle}>
-                    等待支持者分配新任务...
+                    绛夊緟鏀寔鑰呭垎閰嶆柊浠诲姟...
                 </Text>
                 <TouchableOpacity
                     style={styles.demoButton}
-                    onPress={() => {
-                        setTasks(DEMO_TASKS);
-                        setViewMode('list');
-                    }}
+                    onPress={loadDemoTasks}
                 >
-                    <Text style={styles.demoButtonText}>加载示例任务</Text>
+                    <Text style={styles.demoButtonText}>鍔犺浇绀轰緥浠诲姟</Text>
                 </TouchableOpacity>
             </View>
         </SafeAreaView>
@@ -998,16 +1055,16 @@ const styles = StyleSheet.create({
         position: 'absolute',
         right: Spacing.sm,
         top: Spacing.sm,
-        width: 36,
-        height: 36,
-        borderRadius: 18,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         backgroundColor: Colors.error,
         justifyContent: 'center',
         alignItems: 'center',
         opacity: 0.9,
     },
     deleteButtonText: {
-        fontSize: 18,
+        fontSize: 20,
     },
     taskItemLeft: {
         width: 48,
@@ -1039,6 +1096,11 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: Spacing.md,
     },
+    metaItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
     taskItemTime: {
         fontSize: FontSizes.xs,
         color: Colors.textMuted,
@@ -1047,14 +1109,15 @@ const styles = StyleSheet.create({
         fontSize: FontSizes.xs,
         color: Colors.textMuted,
     },
-    taskItemArrow: {
-        fontSize: FontSizes.xl,
-        color: Colors.textMuted,
-        marginLeft: Spacing.sm,
-    },
     // Setup View Styles
     backButton: {
         paddingVertical: Spacing.md,
+        minHeight: 44,
+        justifyContent: 'center',
+    },
+    backButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     backButtonText: {
         fontSize: FontSizes.md,
@@ -1063,10 +1126,7 @@ const styles = StyleSheet.create({
     setupHeader: {
         alignItems: 'center',
         paddingVertical: Spacing.xl,
-    },
-    setupIcon: {
-        fontSize: 64,
-        marginBottom: Spacing.md,
+        marginTop: Spacing.md,
     },
     setupTitle: {
         fontSize: FontSizes.xxl,
@@ -1170,6 +1230,11 @@ const styles = StyleSheet.create({
         paddingVertical: Spacing.lg,
         alignItems: 'center',
     },
+    startButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
     startButtonText: {
         color: '#FFF',
         fontSize: FontSizes.lg,
@@ -1183,6 +1248,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.lg,
         paddingTop: Spacing.md,
         paddingBottom: Spacing.sm,
+    },
+    headerBackButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        minWidth: 44,
+        minHeight: 44,
     },
     backText: {
         fontSize: FontSizes.md,
@@ -1200,9 +1271,9 @@ const styles = StyleSheet.create({
         gap: Spacing.sm,
     },
     settingsButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         backgroundColor: Colors.surfaceElevated,
         justifyContent: 'center',
         alignItems: 'center',
@@ -1212,18 +1283,18 @@ const styles = StyleSheet.create({
         borderColor: Colors.warning,
     },
     settingsIcon: {
-        fontSize: FontSizes.md,
+        fontSize: FontSizes.lg,
     },
     quickHelp: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         backgroundColor: Colors.surfaceElevated,
         justifyContent: 'center',
         alignItems: 'center',
     },
     helpIcon: {
-        fontSize: FontSizes.md,
+        fontSize: FontSizes.lg,
         color: Colors.executor.primary,
         fontWeight: '700',
     },
@@ -1235,6 +1306,9 @@ const styles = StyleSheet.create({
     pausedBadge: {
         position: 'absolute',
         top: '45%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.xs,
         backgroundColor: 'rgba(0,0,0,0.8)',
         paddingHorizontal: Spacing.lg,
         paddingVertical: Spacing.sm,
@@ -1371,8 +1445,7 @@ const styles = StyleSheet.create({
         padding: Spacing.md,
         marginBottom: Spacing.xl,
     },
-    encouragementEmoji: {
-        fontSize: 24,
+    encouragementIcon: {
         marginRight: Spacing.sm,
     },
     encouragementText: {
@@ -1388,6 +1461,11 @@ const styles = StyleSheet.create({
     restartGradient: {
         paddingVertical: Spacing.lg,
         alignItems: 'center',
+    },
+    restartButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
     },
     restartText: {
         color: '#FFF',
@@ -1443,8 +1521,8 @@ const styles = StyleSheet.create({
         gap: Spacing.md,
     },
     modalTimeButton: {
-        width: 40,
-        height: 40,
+        width: 44,
+        height: 44,
         borderRadius: BorderRadius.md,
         backgroundColor: Colors.surfaceElevated,
         justifyContent: 'center',
@@ -1509,3 +1587,5 @@ const styles = StyleSheet.create({
         color: '#FFF',
     },
 });
+
+

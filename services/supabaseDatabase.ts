@@ -5,6 +5,7 @@ import { Task, TaskStatus } from '@/stores/taskStore';
 import { UserRole } from '@/stores/userStore';
 import { ActionType } from '@/stores/energyStore';
 import { Reward } from '@/stores/rewardStore';
+import { createAppError } from '@/services/errorService';
 
 export interface ProfileRow {
     id: string;
@@ -100,7 +101,7 @@ export const userService = {
             .insert(user);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 
@@ -122,7 +123,7 @@ export const userService = {
             .eq('id', userId);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 
@@ -266,7 +267,7 @@ export const taskService = {
             .single();
 
         if (error || !data) {
-            throw new Error(error?.message ?? '创建任务失败');
+            throw createAppError(error ?? new Error('创建任务失败'));
         }
 
         return data.id;
@@ -290,7 +291,7 @@ export const taskService = {
             .eq('id', taskId);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 
@@ -301,7 +302,7 @@ export const taskService = {
             .eq('id', taskId);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 
@@ -314,7 +315,7 @@ export const taskService = {
             .order('created_at', { ascending: false });
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
 
         return (data ?? []) as TaskRow[];
@@ -328,7 +329,7 @@ export const taskService = {
             .order('created_at', { ascending: true });
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
 
         return (data ?? []) as TaskRow[];
@@ -368,6 +369,16 @@ export const taskService = {
     },
 
     subscribeToUserTasks(userId: string, callback: (tasks: TaskRow[]) => void) {
+        // Cache current tasks for incremental updates
+        let cachedTasks: TaskRow[] = [];
+        const isTopLevelTask = (task: TaskRow): boolean => task.parent_task_id === null;
+        const upsertCachedTask = (task: TaskRow) => {
+            const withoutTask = cachedTasks.filter((item) => item.id !== task.id);
+            cachedTasks = [...withoutTask, task].sort(
+                (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            );
+        };
+
         const channel = supabase
             .channel(`tasks:${userId}`)
             .on(
@@ -378,14 +389,55 @@ export const taskService = {
                     table: 'tasks',
                     filter: `executor_id=eq.${userId}`,
                 },
-                async () => {
+                async (payload: RealtimePostgresChangesPayload<TaskRow>) => {
+                    // Optimize: Use payload for incremental updates instead of refetching all tasks
+                    if (payload.eventType === 'INSERT' && payload.new) {
+                        const newTask = payload.new as TaskRow;
+                        if (!isTopLevelTask(newTask)) return;
+                        upsertCachedTask(newTask);
+                        callback(cachedTasks);
+                        return;
+                    }
+
+                    if (payload.eventType === 'UPDATE' && payload.new) {
+                        const updatedTask = payload.new as TaskRow;
+                        const alreadyCached = cachedTasks.some((task) => task.id === updatedTask.id);
+
+                        if (!isTopLevelTask(updatedTask)) {
+                            if (alreadyCached) {
+                                cachedTasks = cachedTasks.filter((task) => task.id !== updatedTask.id);
+                                callback(cachedTasks);
+                            }
+                            return;
+                        }
+
+                        upsertCachedTask(updatedTask);
+                        callback(cachedTasks);
+                        return;
+                    }
+
+                    if (payload.eventType === 'DELETE' && payload.old) {
+                        const nextTasks = cachedTasks.filter((task) => task.id !== payload.old.id);
+                        if (nextTasks.length !== cachedTasks.length) {
+                            cachedTasks = nextTasks;
+                            callback(cachedTasks);
+                        }
+                        return;
+                    }
+
+                    // Fallback: refetch if payload is incomplete
                     const tasks = await this.getTasksForUser(userId);
+                    cachedTasks = tasks;
                     callback(tasks);
                 }
             )
             .subscribe();
 
-        this.getTasksForUser(userId).then(callback);
+        // Initial fetch
+        this.getTasksForUser(userId).then((tasks) => {
+            cachedTasks = tasks;
+            callback(tasks);
+        });
 
         return () => {
             supabase.removeChannel(channel);
@@ -401,7 +453,7 @@ export const coupleService = {
     async create(couple: Omit<CoupleRow, 'created_at'>): Promise<void> {
         const { error } = await supabase.from('couples').insert(couple);
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 
@@ -423,7 +475,7 @@ export const coupleService = {
             .eq('id', coupleId);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 
@@ -475,7 +527,7 @@ export const energyService = {
             .insert(action);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 
@@ -486,7 +538,7 @@ export const energyService = {
             .eq('couple_id', coupleId);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
 
         return (data ?? []) as EnergyActionRow[];
@@ -538,7 +590,7 @@ export const rewardService = {
             .single();
 
         if (error || !data) {
-            throw new Error(error?.message ?? '创建奖励失败');
+            throw createAppError(error ?? new Error('创建奖励失败'));
         }
 
         return data.id;
@@ -551,7 +603,7 @@ export const rewardService = {
             .eq('id', rewardId);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 
@@ -562,7 +614,7 @@ export const rewardService = {
             .eq('id', rewardId);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 
@@ -573,7 +625,7 @@ export const rewardService = {
             .eq('couple_id', coupleId);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
 
         return (data ?? []) as RewardRow[];
@@ -638,7 +690,7 @@ export const messageService = {
             .single();
 
         if (error || !data) {
-            throw new Error(error?.message ?? '发送消息失败');
+            throw createAppError(error ?? new Error('发送消息失败'));
         }
 
         return data.id;
@@ -662,7 +714,7 @@ export const messageService = {
             .eq('id', messageId);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 
@@ -679,7 +731,7 @@ export const messageService = {
 
         const { data, error } = await query;
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
 
         return (data ?? []) as MessageRow[];
@@ -694,7 +746,7 @@ export const messageService = {
             .is('read_at', null);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
 
         return data?.length ?? 0;
@@ -732,7 +784,7 @@ export const messageService = {
             .eq('id', messageId);
 
         if (error) {
-            throw new Error(error.message);
+            throw createAppError(error);
         }
     },
 };

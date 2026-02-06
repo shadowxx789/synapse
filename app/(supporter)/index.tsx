@@ -19,7 +19,10 @@ import Animated, { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
 
 import { Colors, FontSizes, BorderRadius, Spacing } from '@/constants/Colors';
 import { ShredResult, shredTask } from '@/services/ai';
+import { taskService } from '@/services/backend';
 import { useEnergyStore, ACTION_POINTS } from '@/stores/energyStore';
+import { Reward } from '@/stores/rewardStore';
+import { useUserStore } from '@/stores/userStore';
 import SupportHeatmap from '@/components/SupportHeatmap';
 import RewardShop from '@/components/RewardShop';
 import AIAgent from '@/components/AIAgent';
@@ -42,10 +45,12 @@ const generateHeatmapData = () => {
 export default function SupporterHomeScreen() {
     const [taskInput, setTaskInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isSendingTask, setIsSendingTask] = useState(false);
     const [shredResult, setShredResult] = useState<ShredResult | null>(null);
     const [showAIAgent, setShowAIAgent] = useState(false);
     const [activeTab, setActiveTab] = useState<'tasks' | 'heatmap' | 'rewards'>('tasks');
     const { totalPoints, addPoints, actions } = useEnergyStore();
+    const user = useUserStore((state) => state.user);
 
     // Helper to count active days
     const activeDaysCount = () => {
@@ -93,50 +98,105 @@ export default function SupporterHomeScreen() {
             setShredResult(result);
 
             // Award energy points
-            addPoints({
-                userId: 'supporter-1',
-                actionType: 'instruction_shred',
-                points: ACTION_POINTS.instruction_shred,
-                description: `拆解任务: ${taskInput}`,
-            });
+            if (user?.id) {
+                addPoints({
+                    userId: user.id,
+                    actionType: 'instruction_shred',
+                    points: ACTION_POINTS.instruction_shred,
+                    description: `鎷嗚В浠诲姟: ${taskInput}`,
+                });
+            }
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (error) {
             console.error('Shred failed:', error);
             Alert.alert(
-                '拆解失败',
+                '鎷嗚В澶辫触',
                 'AI 任务拆解失败，请检查 AI 配置或稍后重试。',
-                [{ text: '好的' }]
+                [{ text: '濂界殑' }]
             );
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleSendToExecutor = () => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert(
-            '✅ 任务已发送',
-            '执行者将收到这个任务，并看到拆解后的步骤。',
-            [{ text: '好的', style: 'default' }]
+    const handleSendToExecutor = async () => {
+        if (!shredResult) return;
+
+        if (!user?.id || !user.partnerId) {
+            Alert.alert('无法发送', '请先完成伴侣配对，再发送任务。');
+            return;
+        }
+
+        const executorId = user.partnerId;
+        const normalizeMinutes = (value: number | string | undefined): number =>
+            Math.max(1, Math.round(Number(value) || 1));
+        const totalMinutes = Math.max(
+            1,
+            shredResult.subtasks.reduce((sum, subtask) => sum + normalizeMinutes(subtask.estimatedMinutes), 0)
         );
-        setShredResult(null);
-        setTaskInput('');
+
+        setIsSendingTask(true);
+
+        try {
+            const parentTaskId = await taskService.create({
+                parent_task_id: null,
+                title: shredResult.originalTask,
+                description: `支持者分配任务: ${user.name}`,
+                creator_id: user.id,
+                executor_id: executorId,
+                visual_timer_minutes: totalMinutes,
+                status: 'pending',
+                completed_at: null,
+            });
+
+            await Promise.all(
+                shredResult.subtasks.map((subtask) =>
+                    taskService.create({
+                        parent_task_id: parentTaskId,
+                        title: subtask.title,
+                        description: null,
+                        creator_id: user.id,
+                        executor_id: executorId,
+                        visual_timer_minutes: normalizeMinutes(subtask.estimatedMinutes),
+                        status: 'pending',
+                        completed_at: null,
+                    })
+                )
+            );
+
+            if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+
+            Alert.alert(
+                '任务已发送',
+                '执行者将收到这个任务，并看到拆解后的步骤。',
+                [{ text: '好的', style: 'default' }]
+            );
+            setShredResult(null);
+            setTaskInput('');
+        } catch (error) {
+            console.error('Send task failed:', error);
+            Alert.alert('发送失败', '任务发送失败，请稍后重试。');
+        } finally {
+            setIsSendingTask(false);
+        }
     };
 
     const handleAISendReminder = (message: string) => {
         Alert.alert(
             '📤 提醒已发送',
-            `AI 小助手已经帮你发送了提醒:\n\n"${message}"`,
-            [{ text: '好的', style: 'default' }]
+            `AI 灏忓姪鎵嬪凡缁忓府浣犲彂閫佷簡鎻愰啋:\n\n"${message}"`,
+            [{ text: '濂界殑', style: 'default' }]
         );
     };
 
-    const handleRewardRedeemed = (reward: any) => {
+    const handleRewardRedeemed = (reward: Reward) => {
         Alert.alert(
-            '🎉 奖励已兑换',
+            '🎀 奖励已兑换',
             `${reward.title} 已经发送给执行者，请记得兑现哦！`,
-            [{ text: '好的', style: 'default' }]
+            [{ text: '濂界殑', style: 'default' }]
         );
     };
 
@@ -155,7 +215,7 @@ export default function SupporterHomeScreen() {
                     {/* Header with Energy Points */}
                     <View style={styles.header}>
                         <View>
-                            <Text style={styles.greeting}>你好 👋</Text>
+                            <Text style={styles.greeting}>浣犲ソ 馃憢</Text>
                             <Text style={styles.subtitle}>陪伴是最长情的告白</Text>
                         </View>
                         <TouchableOpacity
@@ -187,7 +247,7 @@ export default function SupporterHomeScreen() {
                             onPress={() => setActiveTab('tasks')}
                         >
                             <Text style={[styles.tabText, activeTab === 'tasks' && styles.tabTextActive]}>
-                                任务
+                                浠诲姟
                             </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -195,7 +255,7 @@ export default function SupporterHomeScreen() {
                             onPress={() => setActiveTab('heatmap')}
                         >
                             <Text style={[styles.tabText, activeTab === 'heatmap' && styles.tabTextActive]}>
-                                热力图
+                                鐑姏鍥?
                             </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -203,7 +263,7 @@ export default function SupporterHomeScreen() {
                             onPress={() => setActiveTab('rewards')}
                         >
                             <Text style={[styles.tabText, activeTab === 'rewards' && styles.tabTextActive]}>
-                                奖励
+                                濂栧姳
                             </Text>
                         </TouchableOpacity>
                     </View>
@@ -218,13 +278,13 @@ export default function SupporterHomeScreen() {
                             >
                                 <Text style={styles.sectionTitle}>🔧 任务拆解器</Text>
                                 <Text style={styles.sectionHint}>
-                                    输入一个大任务，AI 会自动拆解成小步骤
+                                    杈撳叆涓€涓ぇ浠诲姟锛孉I 浼氳嚜鍔ㄦ媶瑙ｆ垚灏忔楠?
                                 </Text>
 
                                 <View style={styles.inputContainer}>
                                     <TextInput
                                         style={styles.textInput}
-                                        placeholder="例如：整理衣柜、准备晚餐..."
+                                        placeholder="渚嬪锛氭暣鐞嗚。鏌溿€佸噯澶囨櫄椁?.."
                                         placeholderTextColor={Colors.textMuted}
                                         value={taskInput}
                                         onChangeText={setTaskInput}
@@ -244,14 +304,14 @@ export default function SupporterHomeScreen() {
                                         {isLoading ? (
                                             <ActivityIndicator color="#FFF" />
                                         ) : (
-                                            <Text style={styles.shredButtonText}>✂️ 拆解</Text>
+                                            <Text style={styles.shredButtonText}>鉁傦笍 鎷嗚В</Text>
                                         )}
                                     </TouchableOpacity>
                                 </View>
 
                                 {/* Quick task buttons */}
                                 <View style={styles.quickTasks}>
-                                    {['整理房间', '准备晚餐', '洗碗'].map((task) => (
+                                    {['鏁寸悊鎴块棿', '鍑嗗鏅氶', '娲楃'].map((task) => (
                                         <TouchableOpacity
                                             key={task}
                                             style={styles.quickTaskChip}
@@ -270,9 +330,9 @@ export default function SupporterHomeScreen() {
                                     layout={Layout}
                                     style={styles.resultsSection}
                                 >
-                                    <Text style={styles.sectionTitle}>📋 拆解结果</Text>
+                                    <Text style={styles.sectionTitle}>馃搵 鎷嗚В缁撴灉</Text>
                                     <Text style={styles.originalTask}>
-                                        原任务：{shredResult.originalTask}
+                                        鍘熶换鍔★細{shredResult.originalTask}
                                     </Text>
 
                                     <View style={styles.subtasksList}>
@@ -288,7 +348,7 @@ export default function SupporterHomeScreen() {
                                                 <View style={styles.subtaskContent}>
                                                     <Text style={styles.subtaskTitle}>{subtask.title}</Text>
                                                     <Text style={styles.subtaskTime}>
-                                                        ⏱ {subtask.estimatedMinutes} 分钟
+                                                        鈴?{subtask.estimatedMinutes} 鍒嗛挓
                                                     </Text>
                                                 </View>
                                             </Animated.View>
@@ -298,6 +358,7 @@ export default function SupporterHomeScreen() {
                                     <TouchableOpacity
                                         style={styles.sendButton}
                                         onPress={handleSendToExecutor}
+                                        disabled={isSendingTask}
                                         activeOpacity={0.8}
                                     >
                                         <LinearGradient
@@ -307,7 +368,7 @@ export default function SupporterHomeScreen() {
                                             end={{ x: 1, y: 1 }}
                                         >
                                             <Text style={styles.sendButtonText}>
-                                                📤 发送给执行者
+                                                {isSendingTask ? '发送中...' : '📤 发送给执行者'}
                                             </Text>
                                         </LinearGradient>
                                     </TouchableOpacity>
@@ -322,12 +383,12 @@ export default function SupporterHomeScreen() {
                                     activeOpacity={0.8}
                                 >
                                     <View style={styles.aiAgentIcon}>
-                                        <Text style={styles.aiAgentEmoji}>🤖</Text>
+                                        <Text style={styles.aiAgentEmoji}>馃</Text>
                                     </View>
                                     <View style={styles.aiAgentContent}>
-                                        <Text style={styles.aiAgentTitle}>AI 代替催促</Text>
+                                        <Text style={styles.aiAgentTitle}>AI 浠ｆ浛鍌績</Text>
                                         <Text style={styles.aiAgentDesc}>
-                                            让 AI 小助手帮你温和地提醒执行者
+                                            璁?AI 灏忓姪鎵嬪府浣犳俯鍜屽湴鎻愰啋鎵ц鑰?
                                         </Text>
                                     </View>
                                     <Text style={styles.aiAgentArrow}>→</Text>
@@ -339,10 +400,10 @@ export default function SupporterHomeScreen() {
                                 entering={FadeInUp.delay(400)}
                                 style={styles.energySection}
                             >
-                                <Text style={styles.sectionTitle}>💰 情感银行</Text>
+                                <Text style={styles.sectionTitle}>馃挵 鎯呮劅閾惰</Text>
                                 <View style={styles.energyCard}>
                                     <View style={styles.energyRow}>
-                                        <Text style={styles.energyLabel}>当前能量</Text>
+                                        <Text style={styles.energyLabel}>褰撳墠鑳介噺</Text>
                                         <Text style={styles.energyValue}>⚡ {totalPoints} 点</Text>
                                     </View>
                                     <View style={styles.energyProgress}>
@@ -355,16 +416,16 @@ export default function SupporterHomeScreen() {
                                     </View>
                                     <Text style={styles.energyHint}>
                                         {totalPoints >= 100
-                                            ? '🎉 能量已满！可以兑换奖励了！'
+                                            ? '🎀 能量已满！可以兑换奖励了！'
                                             : `还差 ${100 - totalPoints} 点可以兑换奖励！`}
                                     </Text>
                                 </View>
 
                                 {/* Action breakdown */}
                                 <View style={styles.actionBreakdown}>
-                                    <Text style={styles.breakdownTitle}>积分明细</Text>
+                                    <Text style={styles.breakdownTitle}>绉垎鏄庣粏</Text>
                                     <View style={styles.breakdownItem}>
-                                        <Text style={styles.breakdownLabel}>✂️ 任务拆解</Text>
+                                        <Text style={styles.breakdownLabel}>鉁傦笍 浠诲姟鎷嗚В</Text>
                                         <Text style={styles.breakdownValue}>+10 点/次</Text>
                                     </View>
                                     <View style={styles.breakdownItem}>
@@ -372,8 +433,8 @@ export default function SupporterHomeScreen() {
                                         <Text style={styles.breakdownValue}>+5 点/次</Text>
                                     </View>
                                     <View style={styles.breakdownItem}>
-                                        <Text style={styles.breakdownLabel}>👥 远程陪同</Text>
-                                        <Text style={styles.breakdownValue}>+15 点/30分钟</Text>
+                                        <Text style={styles.breakdownLabel}>馃懃 杩滅▼闄悓</Text>
+                                        <Text style={styles.breakdownValue}>+15 鐐?30鍒嗛挓</Text>
                                     </View>
                                 </View>
                             </Animated.View>
@@ -752,3 +813,4 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
 });
+
